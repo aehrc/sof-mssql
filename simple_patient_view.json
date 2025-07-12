@@ -1,0 +1,15 @@
+{
+  "resourceType": "ViewDefinition",
+  "resource": "Patient",
+  "name": "simple_patient",
+  "status": "active",
+  "select": [
+    {
+      "column": [
+        {"name": "patient_id", "path": "getResourceKey()"},
+        {"name": "gender", "path": "gender"},
+        {"name": "active", "path": "active"}
+      ]
+    }
+  ]
+}

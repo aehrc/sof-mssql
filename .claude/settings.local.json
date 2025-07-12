@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__firecrawl__firecrawl_scrape",
+      "mcp__firecrawl__firecrawl_search",
+      "Bash(dotnet new:*)",
+      "Bash(mkdir:*)",
+      "Bash(dotnet build)",
+      "Bash(dotnet run:*)"
+    ],
+    "deny": []
+  }
+}
