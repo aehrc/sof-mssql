@@ -3,10 +3,10 @@
  * Connects to SQL Server, loads fixture data, runs tests, and compares results.
  */
 
-import { ConnectionPool, config as MSSQLConfig, Request } from 'mssql';
-import { TestSuite, TestCase, ViewDefinition } from './types.js';
-import { ViewDefinitionParser } from './parser.js';
-import { SqlOnFhir } from './index.js';
+import {config as MSSQLConfig, ConnectionPool, Request} from 'mssql';
+import {SqlOnFhir} from './index.js';
+import {ViewDefinitionParser} from './parser.js';
+import {TestCase, TestSuite} from './types.js';
 
 export interface TestRunnerConfig {
   connectionString?: string;
@@ -43,9 +43,9 @@ export interface TestSuiteResult {
 }
 
 export class TestRunner {
-  private config: TestRunnerConfig;
+  private readonly config: TestRunnerConfig;
   private pool?: ConnectionPool;
-  private sqlOnFhir: SqlOnFhir;
+  private readonly sqlOnFhir: SqlOnFhir;
 
   constructor(config: TestRunnerConfig) {
     this.config = {
@@ -404,7 +404,7 @@ export class TestRunner {
    */
   static printResults(result: TestSuiteResult): void {
     console.log(`\n=== Test Suite: ${result.testSuite.title} ===`);
-    console.log(`Description: ${result.testSuite.description || 'No description'}`);
+    console.log(`Description: ${result.testSuite.description ?? 'No description'}`);
     console.log(`Duration: ${result.duration}ms`);
     console.log(`Results: ${result.passedCount}/${result.totalCount} passed`);
 
@@ -435,35 +435,70 @@ export class TestRunner {
   static printDirectoryResults(results: TestSuiteResult[]): void {
     console.log('\n=== Directory Test Results Summary ===');
     
+    const totals = this.calculateTotals(results);
+    this.printIndividualResults(results);
+    this.printOverallSummary(results.length, totals);
+  }
+
+  /**
+   * Calculate total passed, total tests, and total duration.
+   */
+  private static calculateTotals(results: TestSuiteResult[]): { totalPassed: number; totalTests: number; totalDuration: number } {
     let totalPassed = 0;
     let totalTests = 0;
     let totalDuration = 0;
     
     for (const result of results) {
-      const status = result.passedCount === result.totalCount ? '✓' : '✗';
-      console.log(`${status} ${result.testSuite.title}: ${result.passedCount}/${result.totalCount} passed (${result.duration}ms)`);
-      
       totalPassed += result.passedCount;
       totalTests += result.totalCount;
       totalDuration += result.duration;
-      
-      // Show failed tests for failed suites
-      if (result.passedCount !== result.totalCount) {
-        for (const testResult of result.results) {
-          if (!testResult.passed) {
-            console.log(`  ✗ ${testResult.testCase.title}`);
-            if (testResult.error) {
-              console.log(`    Error: ${testResult.error}`);
-            }
+    }
+    
+    return { totalPassed, totalTests, totalDuration };
+  }
+
+  /**
+   * Print individual test suite results.
+   */
+  private static printIndividualResults(results: TestSuiteResult[]): void {
+    for (const result of results) {
+      this.printTestSuiteResult(result);
+      this.printFailedTests(result);
+    }
+  }
+
+  /**
+   * Print a single test suite result.
+   */
+  private static printTestSuiteResult(result: TestSuiteResult): void {
+    const status = result.passedCount === result.totalCount ? '✓' : '✗';
+    console.log(`${status} ${result.testSuite.title}: ${result.passedCount}/${result.totalCount} passed (${result.duration}ms)`);
+  }
+
+  /**
+   * Print failed tests for a test suite if any exist.
+   */
+  private static printFailedTests(result: TestSuiteResult): void {
+    if (result.passedCount !== result.totalCount) {
+      for (const testResult of result.results) {
+        if (!testResult.passed) {
+          console.log(`  ✗ ${testResult.testCase.title}`);
+          if (testResult.error) {
+            console.log(`    Error: ${testResult.error}`);
           }
         }
       }
     }
-    
+  }
+
+  /**
+   * Print overall summary of all test results.
+   */
+  private static printOverallSummary(suiteCount: number, totals: { totalPassed: number; totalTests: number; totalDuration: number }): void {
     console.log(`\n=== Overall Summary ===`);
-    console.log(`Test Suites: ${results.length}`);
-    console.log(`Tests: ${totalPassed}/${totalTests} passed`);
-    console.log(`Duration: ${totalDuration}ms`);
-    console.log(`Result: ${totalPassed === totalTests ? 'All tests passed!' : 'Some tests failed.'}`);
+    console.log(`Test Suites: ${suiteCount}`);
+    console.log(`Tests: ${totals.totalPassed}/${totals.totalTests} passed`);
+    console.log(`Duration: ${totals.totalDuration}ms`);
+    console.log(`Result: ${totals.totalPassed === totals.totalTests ? 'All tests passed!' : 'Some tests failed.'}`);
   }
 }
