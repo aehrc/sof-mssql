@@ -208,6 +208,7 @@ export interface TestCase {
   view: ViewDefinition;
   expect: any[];
   expectColumns?: string[];
+  expectError?: boolean;
 }
 
 export interface TestSuite {

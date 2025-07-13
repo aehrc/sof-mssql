@@ -144,14 +144,33 @@ export class TestRunner {
     }
 
     try {
+      // Validate ViewDefinition first to catch constraint violations
+      ViewDefinitionParser.parseViewDefinition(testCase.view);
+      
       // Generate SQL query from ViewDefinition
       const transpilationResult = this.sqlOnFhir.transpile(testCase.view);
       const sql = transpilationResult.sql;
+      
+      // Debug: Log the generated SQL for manual testing
+      console.log(`\n=== DEBUG SQL for "${testCase.title}" ===`);
+      console.log(sql);
+      console.log('=== END DEBUG SQL ===\n');
 
       // Execute the query
       const request = new Request(this.pool);
       const queryResult = await request.query(sql);
-      const actualResults = queryResult.recordset;
+      const actualResults = this.parseJsonStringsInResults(queryResult.recordset);
+
+      // If expectError is true, this test should have failed but didn't
+      if (testCase.expectError) {
+        return {
+          testCase,
+          passed: false,
+          error: "Expected an error but the test passed",
+          expectedResults: [],
+          sql,
+        };
+      }
 
       // Compare results
       const passed = this.compareResults(
@@ -168,6 +187,17 @@ export class TestRunner {
         sql,
       };
     } catch (error) {
+      // If expectError is true, then an error means the test passed
+      if (testCase.expectError) {
+        return {
+          testCase,
+          passed: true,
+          error: error instanceof Error ? error.message : String(error),
+          expectedResults: [],
+        };
+      }
+
+      // Otherwise, an error means the test failed
       return {
         testCase,
         passed: false,
@@ -226,6 +256,36 @@ export class TestRunner {
     const deleteSql = `DELETE FROM [${this.config.schemaName}].[${this.config.tableName}]`;
     const request = new Request(this.pool);
     await request.query(deleteSql);
+  }
+
+  /**
+   * Parse JSON strings in query results into actual arrays/objects.
+   */
+  private parseJsonStringsInResults(results: any[]): any[] {
+    return results.map(row => {
+      const parsedRow: any = {};
+      for (const [key, value] of Object.entries(row)) {
+        if (typeof value === 'string' && this.looksLikeJson(value)) {
+          try {
+            parsedRow[key] = JSON.parse(value);
+          } catch {
+            // If parsing fails, keep the original string
+            parsedRow[key] = value;
+          }
+        } else {
+          parsedRow[key] = value;
+        }
+      }
+      return parsedRow;
+    });
+  }
+
+  /**
+   * Check if a string looks like JSON (starts with [ or {).
+   */
+  private looksLikeJson(value: string): boolean {
+    const trimmed = value.trim();
+    return trimmed.startsWith('[') || trimmed.startsWith('{');
   }
 
   /**

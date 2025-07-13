@@ -17,5 +17,5 @@ resources:
     cpu: "2"
 
 service:
-  type: ClusterIP
+  type: LoadBalancer
   port: 1433

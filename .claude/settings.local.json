@@ -19,7 +19,11 @@
       "Bash(npm run lint)",
       "Bash(npm run typecheck:*)",
       "Bash(npm run:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(sqlcmd:*)",
+      "Bash(kubectl get svc:*)",
+      "Bash(kubectl exec:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": []
   }
