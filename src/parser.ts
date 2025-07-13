@@ -58,34 +58,55 @@ export class ViewDefinitionParser {
    */
   private static validateSelectElements(selects: any[]): void {
     for (const select of selects) {
-      // Must have either columns or nested selects
-      if (!select.column && !select.select && !select.unionAll) {
-        throw new Error('Select element must have columns, nested selects, or unionAll.');
-      }
+      this.validateSelectElement(select);
+    }
+  }
 
-      // Validate columns
-      if (select.column) {
-        this.validateColumns(select.column);
-      }
+  /**
+   * Validate a single select element.
+   */
+  private static validateSelectElement(select: any): void {
+    this.validateSelectElementStructure(select);
+    this.validateSelectElementContent(select);
+    this.validateSelectElementExpressions(select);
+  }
 
-      // Validate nested selects
-      if (select.select) {
-        this.validateSelectElements(select.select);
-      }
+  /**
+   * Validate select element has required structure.
+   */
+  private static validateSelectElementStructure(select: any): void {
+    if (!select.column && !select.select && !select.unionAll) {
+      throw new Error('Select element must have columns, nested selects, or unionAll.');
+    }
+  }
 
-      // Validate unionAll
-      if (select.unionAll) {
-        this.validateSelectElements(select.unionAll);
-      }
+  /**
+   * Validate select element content (columns and nested elements).
+   */
+  private static validateSelectElementContent(select: any): void {
+    if (select.column) {
+      this.validateColumns(select.column);
+    }
 
-      // Validate forEach/forEachOrNull are strings
-      if (select.forEach && typeof select.forEach !== 'string') {
-        throw new Error('forEach must be a string FHIRPath expression.');
-      }
+    if (select.select) {
+      this.validateSelectElements(select.select);
+    }
 
-      if (select.forEachOrNull && typeof select.forEachOrNull !== 'string') {
-        throw new Error('forEachOrNull must be a string FHIRPath expression.');
-      }
+    if (select.unionAll) {
+      this.validateSelectElements(select.unionAll);
+    }
+  }
+
+  /**
+   * Validate forEach and forEachOrNull expressions.
+   */
+  private static validateSelectElementExpressions(select: any): void {
+    if (select.forEach && typeof select.forEach !== 'string') {
+      throw new Error('forEach must be a string FHIRPath expression.');
+    }
+
+    if (select.forEachOrNull && typeof select.forEachOrNull !== 'string') {
+      throw new Error('forEachOrNull must be a string FHIRPath expression.');
     }
   }
 
@@ -103,7 +124,7 @@ export class ViewDefinitionParser {
       }
 
       // Validate column name is database-friendly
-      if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(column.name)) {
+      if (!/^[a-zA-Z_]\w*$/.test(column.name)) {
         throw new Error(`Column name '${column.name}' is not database-friendly. Use alphanumeric and underscores only.`);
       }
     }
