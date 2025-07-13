@@ -4,9 +4,9 @@
  * Command-line interface for SQL on FHIR MS SQL transpiler.
  */
 
-import { Command } from 'commander';
-import { readFileSync, writeFileSync } from 'fs';
-import { SqlOnFhir, createView, createTable, transpile } from './index.js';
+import {Command} from 'commander';
+import {readFileSync, writeFileSync} from 'fs';
+import {createTable, createView, SqlOnFhir, transpile} from './index.js';
 
 const program = new Command();
 
@@ -126,12 +126,11 @@ program
   .action((input) => {
     try {
       const viewDefJson = readFileSync(input, 'utf8');
-      const sqlOnFhir = new SqlOnFhir();
-      
+      new SqlOnFhir();
       const viewDef = SqlOnFhir.parseViewDefinition(viewDefJson);
       console.log(`✓ ViewDefinition is valid`);
       console.log(`  Resource: ${viewDef.resource}`);
-      console.log(`  Name: ${viewDef.name || 'unnamed'}`);
+      console.log(`  Name: ${viewDef.name ?? 'unnamed'}`);
       console.log(`  Status: ${viewDef.status}`);
       
       const columns = SqlOnFhir.getColumnNames(viewDef);
