@@ -36,14 +36,14 @@ export class FHIRPathTranspiler {
     // { children: [{ type: "EntireExpression", children: [{ type: "TermExpression", ... }] }] }
     // We need to navigate to the actual expression
     
-    if (!parsed || !parsed.children || parsed.children.length === 0) {
+    if (!parsed?.children || parsed.children.length === 0) {
       return null;
     }
 
     let current = parsed.children[0]; // EntireExpression
     
     // Navigate down to find the actual expression content
-    while (current && current.children && current.children.length > 0) {
+    while (current?.children && current.children.length > 0) {
       if (current.type === 'EntireExpression') {
         current = current.children[0]; // Could be AndExpression, OrExpression, TermExpression, etc.
       } else if (current.type === 'TermExpression') {
@@ -128,9 +128,6 @@ export class FHIRPathTranspiler {
       case 'MemberInvocation':
         return this.transpileMemberInvocation(node, context);
       
-      case 'FunctionInvocation':
-        return this.transpileFunction(node, context);
-      
       default:
         throw new Error(`Unsupported FHIRPath node type: ${node.type}`);
     }
@@ -162,7 +159,7 @@ export class FHIRPathTranspiler {
       throw new Error(`Could not extract function name from node: ${JSON.stringify(node)}`);
     }
     
-    const args = node.params || [];
+    const args = node.params ?? [];
 
     switch (functionName) {
       case 'exists':
@@ -190,7 +187,7 @@ export class FHIRPathTranspiler {
             // If the context contains JSON_VALUE with a path like '$.name.family', 
             // convert it to get the first element: '$.name[0].family'
             if (context.iterationContext.includes('JSON_VALUE')) {
-              const pathMatch = context.iterationContext.match(/JSON_VALUE\(([^,]+),\s*'([^']+)'\)/);
+              const pathMatch = RegExp(/JSON_VALUE\(([^,]+),\s*'([^']+)'\)/).exec(context.iterationContext);
               if (pathMatch) {
                 const source = pathMatch[1];
                 const path = pathMatch[2];
@@ -219,40 +216,43 @@ export class FHIRPathTranspiler {
           return `JSON_VALUE(${pathExpr}, '$[0]')`;
         }
 
-      case 'last':
-        const pathExpr = args.length > 0 ? 
-          this.transpileNode(args[0], context) : 
-          (context.iterationContext || `${context.resourceAlias}.json`);
+      case 'last': {
+        const pathExpr = args.length > 0 ?
+            this.transpileNode(args[0], context) :
+            (context.iterationContext ?? `${context.resourceAlias}.json`);
         return `JSON_VALUE(${pathExpr}, '$[last]')`;
+      }
 
-      case 'count':
-        const countPath = args.length > 0 ? 
-          this.transpileNode(args[0], context) : 
-          (context.iterationContext || `${context.resourceAlias}.json`);
+      case 'count': {
+        const countPath = args.length > 0 ?
+            this.transpileNode(args[0], context) :
+            (context.iterationContext ?? `${context.resourceAlias}.json`);
         return `JSON_ARRAY_LENGTH(${countPath})`;
+      }
 
-      case 'join':
+      case 'join': {
         if (args.length !== 1) {
           throw new Error('join() function requires exactly one argument');
         }
         const separator = this.transpileNode(args[0], context);
-        const arrayPath = context.iterationContext || `${context.resourceAlias}.json`;
         return `STRING_AGG(JSON_VALUE(value, '$'), ${separator})`;
+      }
 
-      case 'where':
+      case 'where': {
         if (args.length !== 1) {
           throw new Error('where() function requires exactly one argument');
         }
         // This is complex and would typically require CROSS APPLY with JSON array
         const whereCondition = this.transpileNode(args[0], context);
         return `CROSS APPLY OPENJSON(${context.resourceAlias}.json) WHERE ${whereCondition}`;
+      }
 
-      case 'select':
+      case 'select': {
         if (args.length !== 1) {
           throw new Error('select() function requires exactly one argument');
         }
-        const selectExpr = this.transpileNode(args[0], context);
-        return selectExpr;
+        return this.transpileNode(args[0], context);
+      }
 
       case 'getResourceKey':
         return `${context.resourceAlias}.id`;
@@ -279,7 +279,7 @@ export class FHIRPathTranspiler {
     }
     
     // Check if it's a constant
-    if (context.constants && context.constants[identifier]) {
+    if (context.constants?.[identifier]) {
       return this.formatConstantValue(context.constants[identifier]);
     }
 
@@ -357,7 +357,7 @@ export class FHIRPathTranspiler {
     // Create nested JSON path
     if (base.includes('JSON_VALUE')) {
       // Extract the existing path and extend it
-      const pathMatch = base.match(/JSON_VALUE\([^,]+,\s*'([^']+)'\)/);
+      const pathMatch = RegExp(/JSON_VALUE\([^,]+,\s*'([^']+)'\)/).exec(base);
       if (pathMatch) {
         const existingPath = pathMatch[1];
         const newPath = `${existingPath}.${property}`;
@@ -401,7 +401,7 @@ export class FHIRPathTranspiler {
       // Create JSON path access
       if (base.includes('JSON_VALUE')) {
         // Extend existing JSON path
-        const pathMatch = base.match(/JSON_VALUE\(([^,]+),\s*'([^']+)'\)/);
+        const pathMatch = RegExp(/JSON_VALUE\(([^,]+),\s*'([^']+)'\)/).exec(base);
         if (pathMatch) {
           const source = pathMatch[1];
           const existingPath = pathMatch[2];
