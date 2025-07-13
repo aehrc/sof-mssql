@@ -145,7 +145,7 @@ program
 program
   .command('test')
   .description('Run tests from sql-on-fhir-v2 test suite')
-  .argument('<test-file>', 'Test suite file (JSON)')
+  .argument('<test-path>', 'Test suite file (JSON) or directory containing test files')
   .option('-c, --connection <string>', 'SQL Server connection string')
   .option('--host <host>', 'SQL Server host', 'localhost')
   .option('--port <port>', 'SQL Server port', '1433')
@@ -156,9 +156,10 @@ program
   .option('-s, --schema <name>', 'Database schema name', 'dbo')
   .option('--encrypt', 'Enable encryption', true)
   .option('--trust-cert', 'Trust server certificate', true)
-  .action(async (testFile, options) => {
+  .action(async (testPath, options) => {
     try {
       const { TestRunner } = await import('./test-runner.js');
+      const { statSync } = await import('fs');
       
       const config = {
         connectionString: options.connection,
@@ -175,12 +176,30 @@ program
         }
       };
 
-      console.log(`Running test suite: ${testFile}`);
-      const result = await TestRunner.runTestSuiteFromFile(testFile, config);
-      TestRunner.printResults(result);
+      // Check if testPath is a file or directory
+      const stats = statSync(testPath);
       
-      if (result.passedCount !== result.totalCount) {
-        process.exit(1);
+      if (stats.isDirectory()) {
+        // Run all JSON test files in the directory
+        console.log(`Running all test suites in directory: ${testPath}`);
+        const results = await TestRunner.runTestSuitesFromDirectory(testPath, config);
+        TestRunner.printDirectoryResults(results);
+        
+        const totalPassed = results.reduce((sum: number, result) => sum + result.passedCount, 0);
+        const totalTests = results.reduce((sum: number, result) => sum + result.totalCount, 0);
+        
+        if (totalPassed !== totalTests) {
+          process.exit(1);
+        }
+      } else {
+        // Run single test file
+        console.log(`Running test suite: ${testPath}`);
+        const result = await TestRunner.runTestSuiteFromFile(testPath, config);
+        TestRunner.printResults(result);
+        
+        if (result.passedCount !== result.totalCount) {
+          process.exit(1);
+        }
       }
     } catch (error) {
       console.error('Error running tests:', error);

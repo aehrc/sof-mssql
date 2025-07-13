@@ -355,6 +355,51 @@ export class TestRunner {
   }
 
   /**
+   * Run all test suites from JSON files in a directory.
+   */
+  static async runTestSuitesFromDirectory(directoryPath: string, config: TestRunnerConfig): Promise<TestSuiteResult[]> {
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    // Get all JSON files in the directory
+    const files = fs.readdirSync(directoryPath)
+      .filter(file => file.endsWith('.json'))
+      .map(file => path.join(directoryPath, file));
+    
+    if (files.length === 0) {
+      throw new Error(`No JSON test files found in directory: ${directoryPath}`);
+    }
+    
+    const results: TestSuiteResult[] = [];
+    
+    // Run each test file
+    for (const filePath of files) {
+      try {
+        console.log(`\n--- Running test suite: ${path.basename(filePath)} ---`);
+        const result = await this.runTestSuiteFromFile(filePath, config);
+        results.push(result);
+      } catch (error) {
+        console.error(`Error running test file ${filePath}:`, error);
+        // Create a failed result for this file
+        results.push({
+          testSuite: { 
+            title: path.basename(filePath), 
+            description: 'Failed to load', 
+            tests: [],
+            resources: []
+          },
+          results: [],
+          passedCount: 0,
+          totalCount: 0,
+          duration: 0
+        });
+      }
+    }
+    
+    return results;
+  }
+
+  /**
    * Print test results to console.
    */
   static printResults(result: TestSuiteResult): void {
@@ -382,5 +427,43 @@ export class TestRunner {
     }
 
     console.log(`\n${result.passedCount === result.totalCount ? 'All tests passed!' : 'Some tests failed.'}`);
+  }
+
+  /**
+   * Print directory test results to console.
+   */
+  static printDirectoryResults(results: TestSuiteResult[]): void {
+    console.log('\n=== Directory Test Results Summary ===');
+    
+    let totalPassed = 0;
+    let totalTests = 0;
+    let totalDuration = 0;
+    
+    for (const result of results) {
+      const status = result.passedCount === result.totalCount ? '✓' : '✗';
+      console.log(`${status} ${result.testSuite.title}: ${result.passedCount}/${result.totalCount} passed (${result.duration}ms)`);
+      
+      totalPassed += result.passedCount;
+      totalTests += result.totalCount;
+      totalDuration += result.duration;
+      
+      // Show failed tests for failed suites
+      if (result.passedCount !== result.totalCount) {
+        for (const testResult of result.results) {
+          if (!testResult.passed) {
+            console.log(`  ✗ ${testResult.testCase.title}`);
+            if (testResult.error) {
+              console.log(`    Error: ${testResult.error}`);
+            }
+          }
+        }
+      }
+    }
+    
+    console.log(`\n=== Overall Summary ===`);
+    console.log(`Test Suites: ${results.length}`);
+    console.log(`Tests: ${totalPassed}/${totalTests} passed`);
+    console.log(`Duration: ${totalDuration}ms`);
+    console.log(`Result: ${totalPassed === totalTests ? 'All tests passed!' : 'Some tests failed.'}`);
   }
 }
