@@ -126,7 +126,6 @@ program
   .action((input) => {
     try {
       const viewDefJson = readFileSync(input, 'utf8');
-      new SqlOnFhir();
       const viewDef = SqlOnFhir.parseViewDefinition(viewDefJson);
       console.log(`✓ ViewDefinition is valid`);
       console.log(`  Resource: ${viewDef.resource}`);

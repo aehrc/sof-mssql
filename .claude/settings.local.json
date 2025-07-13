@@ -18,7 +18,8 @@
       "Bash(grep:*)",
       "Bash(npm run lint)",
       "Bash(npm run typecheck:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": []
   }
