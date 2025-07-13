@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__firecrawl__firecrawl_scrape",
+      "mcp__firecrawl__firecrawl_extract",
+      "WebFetch(domain:sql-on-fhir.org)",
+      "mcp__firecrawl__firecrawl_map",
+      "Bash(mkdir:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(git submodule:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(npm ls:*)"
+    ],
+    "deny": []
+  }
+}

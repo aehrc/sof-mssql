@@ -1,0 +1,47 @@
+{
+  "name": "sql-on-fhir-mssql",
+  "version": "1.0.0",
+  "description": "A SQL on FHIR view runner that transpiles view definitions into T-SQL queries for MS SQL Server",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "sof-mssql": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src/**/*.ts",
+    "start": "node dist/cli.js"
+  },
+  "keywords": [
+    "fhir",
+    "sql-on-fhir",
+    "mssql",
+    "tsql",
+    "healthcare",
+    "hl7"
+  ],
+  "author": "John Grimes",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.1.0",
+    "fhirpath": "^3.15.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.13",
+    "@types/mssql": "^9.1.7",
+    "@types/node": "^22.5.5",
+    "@typescript-eslint/eslint-plugin": "^8.8.0",
+    "@typescript-eslint/parser": "^8.8.0",
+    "eslint": "^9.11.1",
+    "jest": "^29.7.0",
+    "mssql": "^11.0.1",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.6.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

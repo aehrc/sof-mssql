@@ -1,0 +1,21 @@
+image:
+  repository: mcr.microsoft.com/mssql/server
+  tag: "2022-latest"
+  pullPolicy: IfNotPresent
+
+env:
+  ACCEPT_EULA: "Y"
+  SA_PASSWORD: "YourStrong!Passw0rd"
+  MSSQL_PID: "Express"
+
+resources:
+  requests:
+    memory: "2Gi"
+    cpu: "500m"
+  limits:
+    memory: "4Gi"
+    cpu: "2"
+
+service:
+  type: ClusterIP
+  port: 1433
