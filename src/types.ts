@@ -3,14 +3,14 @@
  */
 
 export interface ViewDefinition {
-  resourceType: 'ViewDefinition';
+  resourceType: "ViewDefinition";
   id?: string;
   url?: string;
   identifier?: Identifier[];
   version?: string;
   name?: string;
   title?: string;
-  status: 'draft' | 'active' | 'retired' | 'unknown';
+  status: "draft" | "active" | "retired" | "unknown";
   experimental?: boolean;
   date?: string;
   publisher?: string;

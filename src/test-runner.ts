@@ -3,10 +3,10 @@
  * Connects to SQL Server, loads fixture data, runs tests, and compares results.
  */
 
-import {config as MSSQLConfig, ConnectionPool, Request} from 'mssql';
-import {SqlOnFhir} from './index.js';
-import {ViewDefinitionParser} from './parser.js';
-import {TestCase, TestSuite} from './types.js';
+import { config as MSSQLConfig, ConnectionPool, Request } from "mssql";
+import { SqlOnFhir } from "./index.js";
+import { ViewDefinitionParser } from "./parser.js";
+import { TestCase, TestSuite } from "./types.js";
 
 export interface TestRunnerConfig {
   connectionString?: string;
@@ -50,22 +50,22 @@ export class TestRunner {
   constructor(config: TestRunnerConfig) {
     this.config = {
       port: 1433,
-      tableName: 'fhir_resources',
-      schemaName: 'dbo',
-      resourceIdColumn: 'id',
-      resourceJsonColumn: 'json',
+      tableName: "fhir_resources",
+      schemaName: "dbo",
+      resourceIdColumn: "id",
+      resourceJsonColumn: "json",
       options: {
         encrypt: true,
-        trustServerCertificate: true
+        trustServerCertificate: true,
       },
-      ...config
+      ...config,
     };
 
     this.sqlOnFhir = new SqlOnFhir({
       tableName: this.config.tableName,
       schemaName: this.config.schemaName,
       resourceIdColumn: this.config.resourceIdColumn,
-      resourceJsonColumn: this.config.resourceJsonColumn
+      resourceJsonColumn: this.config.resourceJsonColumn,
     });
   }
 
@@ -73,16 +73,16 @@ export class TestRunner {
    * Connect to the SQL Server database.
    */
   async connect(): Promise<void> {
-    const connectionConfig: MSSQLConfig = this.config.connectionString ? 
-      { connectionString: this.config.connectionString } as any :
-      {
-        server: this.config.server,
-        port: this.config.port,
-        database: this.config.database,
-        user: this.config.user,
-        password: this.config.password,
-        options: this.config.options
-      };
+    const connectionConfig: MSSQLConfig = this.config.connectionString
+      ? ({ connectionString: this.config.connectionString } as any)
+      : {
+          server: this.config.server,
+          port: this.config.port,
+          database: this.config.database,
+          user: this.config.user,
+          password: this.config.password,
+          options: this.config.options,
+        };
 
     this.pool = new ConnectionPool(connectionConfig);
     await this.pool.connect();
@@ -103,7 +103,7 @@ export class TestRunner {
    */
   async runTestSuite(testSuite: TestSuite): Promise<TestSuiteResult> {
     if (!this.pool) {
-      throw new Error('Not connected to database. Call connect() first.');
+      throw new Error("Not connected to database. Call connect() first.");
     }
 
     const startTime = Date.now();
@@ -124,14 +124,14 @@ export class TestRunner {
     }
 
     const endTime = Date.now();
-    const passedCount = results.filter(r => r.passed).length;
+    const passedCount = results.filter((r) => r.passed).length;
 
     return {
       testSuite,
       results,
       passedCount,
       totalCount: results.length,
-      duration: endTime - startTime
+      duration: endTime - startTime,
     };
   }
 
@@ -140,7 +140,7 @@ export class TestRunner {
    */
   async runTestCase(testCase: TestCase): Promise<TestResult> {
     if (!this.pool) {
-      throw new Error('Not connected to database. Call connect() first.');
+      throw new Error("Not connected to database. Call connect() first.");
     }
 
     try {
@@ -154,21 +154,25 @@ export class TestRunner {
       const actualResults = queryResult.recordset;
 
       // Compare results
-      const passed = this.compareResults(actualResults, testCase.expect, testCase.expectColumns);
+      const passed = this.compareResults(
+        actualResults,
+        testCase.expect,
+        testCase.expectColumns,
+      );
 
       return {
         testCase,
         passed,
         actualResults,
         expectedResults: testCase.expect,
-        sql
+        sql,
       };
     } catch (error) {
       return {
         testCase,
         passed: false,
         error: error instanceof Error ? error.message : String(error),
-        expectedResults: testCase.expect
+        expectedResults: testCase.expect,
       };
     }
   }
@@ -178,7 +182,7 @@ export class TestRunner {
    */
   private async setupTestData(resources: any[]): Promise<void> {
     if (!this.pool) {
-      throw new Error('Not connected to database');
+      throw new Error("Not connected to database");
     }
 
     // Create test table if it doesn't exist
@@ -204,9 +208,9 @@ export class TestRunner {
       `;
 
       const insertRequest = new Request(this.pool);
-      insertRequest.input('id', resource.id);
-      insertRequest.input('json', JSON.stringify(resource));
-      
+      insertRequest.input("id", resource.id);
+      insertRequest.input("json", JSON.stringify(resource));
+
       await insertRequest.query(insertSql);
     }
   }
@@ -227,7 +231,11 @@ export class TestRunner {
   /**
    * Compare actual and expected results, ignoring row ordering.
    */
-  private compareResults(actual: any[], expected: any[], expectedColumns?: string[]): boolean {
+  private compareResults(
+    actual: any[],
+    expected: any[],
+    expectedColumns?: string[],
+  ): boolean {
     // Check if arrays have the same length
     if (actual.length !== expected.length) {
       return false;
@@ -252,7 +260,9 @@ export class TestRunner {
 
     // For each expected row, try to find a matching actual row
     for (const expectedRow of expectedCopy) {
-      const matchIndex = actualCopy.findIndex(actualRow => this.deepEqual(actualRow, expectedRow));
+      const matchIndex = actualCopy.findIndex((actualRow) =>
+        this.deepEqual(actualRow, expectedRow),
+      );
       if (matchIndex === -1) {
         return false; // No matching row found
       }
@@ -267,14 +277,18 @@ export class TestRunner {
   /**
    * Compare two result sets ignoring order, using only specified columns.
    */
-  private compareResultSetsWithColumns(actual: any[], expected: any[], columns: string[]): boolean {
+  private compareResultSetsWithColumns(
+    actual: any[],
+    expected: any[],
+    columns: string[],
+  ): boolean {
     // Create copies to avoid modifying originals
     const actualCopy = [...actual];
     const expectedCopy = [...expected];
 
     // For each expected row, try to find a matching actual row
     for (const expectedRow of expectedCopy) {
-      const matchIndex = actualCopy.findIndex(actualRow => {
+      const matchIndex = actualCopy.findIndex((actualRow) => {
         // Check if all specified columns match
         for (const column of columns) {
           if (!this.isEqual(actualRow[column], expectedRow[column])) {
@@ -283,7 +297,7 @@ export class TestRunner {
         }
         return true;
       });
-      
+
       if (matchIndex === -1) {
         return false; // No matching row found
       }
@@ -308,11 +322,11 @@ export class TestRunner {
       return a.every((item, index) => this.deepEqual(item, b[index]));
     }
 
-    if (typeof a === 'object') {
+    if (typeof a === "object") {
       const keysA = Object.keys(a);
       const keysB = Object.keys(b);
       if (keysA.length !== keysB.length) return false;
-      return keysA.every(key => this.deepEqual(a[key], b[key]));
+      return keysA.every((key) => this.deepEqual(a[key], b[key]));
     }
 
     return false;
@@ -327,10 +341,10 @@ export class TestRunner {
     if (a == null || b == null) return false;
 
     // Handle boolean conversion
-    if (typeof a === 'boolean' && typeof b === 'number') {
+    if (typeof a === "boolean" && typeof b === "number") {
       return a === Boolean(b);
     }
-    if (typeof b === 'boolean' && typeof a === 'number') {
+    if (typeof b === "boolean" && typeof a === "number") {
       return b === Boolean(a);
     }
 
@@ -340,9 +354,12 @@ export class TestRunner {
   /**
    * Run test suite from a file.
    */
-  static async runTestSuiteFromFile(filePath: string, config: TestRunnerConfig): Promise<TestSuiteResult> {
-    const fs = await import('fs');
-    const testSuiteJson = fs.readFileSync(filePath, 'utf8');
+  static async runTestSuiteFromFile(
+    filePath: string,
+    config: TestRunnerConfig,
+  ): Promise<TestSuiteResult> {
+    const fs = await import("fs");
+    const testSuiteJson = fs.readFileSync(filePath, "utf8");
     const testSuite = ViewDefinitionParser.parseTestSuite(testSuiteJson);
 
     const runner = new TestRunner(config);
@@ -357,21 +374,27 @@ export class TestRunner {
   /**
    * Run all test suites from JSON files in a directory.
    */
-  static async runTestSuitesFromDirectory(directoryPath: string, config: TestRunnerConfig): Promise<TestSuiteResult[]> {
-    const fs = await import('fs');
-    const path = await import('path');
-    
+  static async runTestSuitesFromDirectory(
+    directoryPath: string,
+    config: TestRunnerConfig,
+  ): Promise<TestSuiteResult[]> {
+    const fs = await import("fs");
+    const path = await import("path");
+
     // Get all JSON files in the directory
-    const files = fs.readdirSync(directoryPath)
-      .filter(file => file.endsWith('.json'))
-      .map(file => path.join(directoryPath, file));
-    
+    const files = fs
+      .readdirSync(directoryPath)
+      .filter((file) => file.endsWith(".json"))
+      .map((file) => path.join(directoryPath, file));
+
     if (files.length === 0) {
-      throw new Error(`No JSON test files found in directory: ${directoryPath}`);
+      throw new Error(
+        `No JSON test files found in directory: ${directoryPath}`,
+      );
     }
-    
+
     const results: TestSuiteResult[] = [];
-    
+
     // Run each test file
     for (const filePath of files) {
       try {
@@ -382,20 +405,20 @@ export class TestRunner {
         console.error(`Error running test file ${filePath}:`, error);
         // Create a failed result for this file
         results.push({
-          testSuite: { 
-            title: path.basename(filePath), 
-            description: 'Failed to load', 
+          testSuite: {
+            title: path.basename(filePath),
+            description: "Failed to load",
             tests: [],
-            resources: []
+            resources: [],
           },
           results: [],
           passedCount: 0,
           totalCount: 0,
-          duration: 0
+          duration: 0,
         });
       }
     }
-    
+
     return results;
   }
 
@@ -404,37 +427,45 @@ export class TestRunner {
    */
   static printResults(result: TestSuiteResult): void {
     console.log(`\n=== Test Suite: ${result.testSuite.title} ===`);
-    console.log(`Description: ${result.testSuite.description ?? 'No description'}`);
+    console.log(
+      `Description: ${result.testSuite.description ?? "No description"}`,
+    );
     console.log(`Duration: ${result.duration}ms`);
     console.log(`Results: ${result.passedCount}/${result.totalCount} passed`);
 
     for (const testResult of result.results) {
-      const status = testResult.passed ? '✓' : '✗';
+      const status = testResult.passed ? "✓" : "✗";
       console.log(`\n${status} ${testResult.testCase.title}`);
-      
+
       if (!testResult.passed) {
         if (testResult.error) {
           console.log(`  Error: ${testResult.error}`);
         } else {
-          console.log(`  Expected: ${JSON.stringify(testResult.expectedResults)}`);
-          console.log(`  Actual:   ${JSON.stringify(testResult.actualResults)}`);
+          console.log(
+            `  Expected: ${JSON.stringify(testResult.expectedResults)}`,
+          );
+          console.log(
+            `  Actual:   ${JSON.stringify(testResult.actualResults)}`,
+          );
         }
-        
+
         if (testResult.sql) {
           console.log(`  SQL: ${testResult.sql}`);
         }
       }
     }
 
-    console.log(`\n${result.passedCount === result.totalCount ? 'All tests passed!' : 'Some tests failed.'}`);
+    console.log(
+      `\n${result.passedCount === result.totalCount ? "All tests passed!" : "Some tests failed."}`,
+    );
   }
 
   /**
    * Print directory test results to console.
    */
   static printDirectoryResults(results: TestSuiteResult[]): void {
-    console.log('\n=== Directory Test Results Summary ===');
-    
+    console.log("\n=== Directory Test Results Summary ===");
+
     const totals = this.calculateTotals(results);
     this.printIndividualResults(results);
     this.printOverallSummary(results.length, totals);
@@ -443,17 +474,21 @@ export class TestRunner {
   /**
    * Calculate total passed, total tests, and total duration.
    */
-  private static calculateTotals(results: TestSuiteResult[]): { totalPassed: number; totalTests: number; totalDuration: number } {
+  private static calculateTotals(results: TestSuiteResult[]): {
+    totalPassed: number;
+    totalTests: number;
+    totalDuration: number;
+  } {
     let totalPassed = 0;
     let totalTests = 0;
     let totalDuration = 0;
-    
+
     for (const result of results) {
       totalPassed += result.passedCount;
       totalTests += result.totalCount;
       totalDuration += result.duration;
     }
-    
+
     return { totalPassed, totalTests, totalDuration };
   }
 
@@ -471,8 +506,10 @@ export class TestRunner {
    * Print a single test suite result.
    */
   private static printTestSuiteResult(result: TestSuiteResult): void {
-    const status = result.passedCount === result.totalCount ? '✓' : '✗';
-    console.log(`${status} ${result.testSuite.title}: ${result.passedCount}/${result.totalCount} passed (${result.duration}ms)`);
+    const status = result.passedCount === result.totalCount ? "✓" : "✗";
+    console.log(
+      `${status} ${result.testSuite.title}: ${result.passedCount}/${result.totalCount} passed (${result.duration}ms)`,
+    );
   }
 
   /**
@@ -494,11 +531,16 @@ export class TestRunner {
   /**
    * Print overall summary of all test results.
    */
-  private static printOverallSummary(suiteCount: number, totals: { totalPassed: number; totalTests: number; totalDuration: number }): void {
+  private static printOverallSummary(
+    suiteCount: number,
+    totals: { totalPassed: number; totalTests: number; totalDuration: number },
+  ): void {
     console.log(`\n=== Overall Summary ===`);
     console.log(`Test Suites: ${suiteCount}`);
     console.log(`Tests: ${totals.totalPassed}/${totals.totalTests} passed`);
     console.log(`Duration: ${totals.totalDuration}ms`);
-    console.log(`Result: ${totals.totalPassed === totals.totalTests ? 'All tests passed!' : 'Some tests failed.'}`);
+    console.log(
+      `Result: ${totals.totalPassed === totals.totalTests ? "All tests passed!" : "Some tests failed."}`,
+    );
   }
 }

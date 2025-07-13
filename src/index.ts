@@ -3,14 +3,26 @@
  * Main API for transpiling ViewDefinitions to T-SQL queries.
  */
 
-export { ViewDefinition, ViewDefinitionSelect, ViewDefinitionColumn, ViewDefinitionWhere, TranspilationResult, ColumnInfo, TestSuite, TestCase } from './types.js';
-export { ViewDefinitionParser } from './parser.js';
-export { QueryGenerator, QueryGeneratorOptions } from './query-generator.js';
-export { FHIRPathTranspiler, TranspilerContext } from './fhirpath-transpiler.js';
+export {
+  ViewDefinition,
+  ViewDefinitionSelect,
+  ViewDefinitionColumn,
+  ViewDefinitionWhere,
+  TranspilationResult,
+  ColumnInfo,
+  TestSuite,
+  TestCase,
+} from "./types.js";
+export { ViewDefinitionParser } from "./parser.js";
+export { QueryGenerator, QueryGeneratorOptions } from "./query-generator.js";
+export {
+  FHIRPathTranspiler,
+  TranspilerContext,
+} from "./fhirpath-transpiler.js";
 
-import {ViewDefinitionParser} from './parser.js';
-import {QueryGenerator, QueryGeneratorOptions} from './query-generator.js';
-import {TranspilationResult, ViewDefinition} from './types.js';
+import { ViewDefinitionParser } from "./parser.js";
+import { QueryGenerator, QueryGeneratorOptions } from "./query-generator.js";
+import { TranspilationResult, ViewDefinition } from "./types.js";
 
 /**
  * Type alias for ViewDefinition input that can be a parsed object, JSON string, or raw object.
@@ -32,8 +44,11 @@ export class SqlOnFhir {
    */
   transpile(viewDefinition: ViewDefinitionInput): TranspilationResult {
     let viewDef: ViewDefinition;
-    
-    if (typeof viewDefinition === 'string' || (typeof viewDefinition === 'object' && 'resourceType' in viewDefinition)) {
+
+    if (
+      typeof viewDefinition === "string" ||
+      (typeof viewDefinition === "object" && "resourceType" in viewDefinition)
+    ) {
       viewDef = ViewDefinitionParser.parseViewDefinition(viewDefinition);
     } else {
       viewDef = viewDefinition as ViewDefinition;
@@ -47,8 +62,11 @@ export class SqlOnFhir {
    */
   createView(viewDefinition: ViewDefinitionInput, viewName?: string): string {
     let viewDef: ViewDefinition;
-    
-    if (typeof viewDefinition === 'string' || (typeof viewDefinition === 'object' && 'resourceType' in viewDefinition)) {
+
+    if (
+      typeof viewDefinition === "string" ||
+      (typeof viewDefinition === "object" && "resourceType" in viewDefinition)
+    ) {
       viewDef = ViewDefinitionParser.parseViewDefinition(viewDefinition);
     } else {
       viewDef = viewDefinition as ViewDefinition;
@@ -62,8 +80,11 @@ export class SqlOnFhir {
    */
   createTable(viewDefinition: ViewDefinitionInput, tableName?: string): string {
     let viewDef: ViewDefinition;
-    
-    if (typeof viewDefinition === 'string' || (typeof viewDefinition === 'object' && 'resourceType' in viewDefinition)) {
+
+    if (
+      typeof viewDefinition === "string" ||
+      (typeof viewDefinition === "object" && "resourceType" in viewDefinition)
+    ) {
       viewDef = ViewDefinitionParser.parseViewDefinition(viewDefinition);
     } else {
       viewDef = viewDefinition as ViewDefinition;
@@ -71,7 +92,7 @@ export class SqlOnFhir {
 
     return this.queryGenerator.generateCreateTable(viewDef, tableName);
   }
-  
+
   /**
    * Parse a ViewDefinition from JSON.
    */
@@ -102,7 +123,10 @@ export class SqlOnFhir {
 /**
  * Convenience function to transpile a ViewDefinition to T-SQL.
  */
-export function transpile(viewDefinition: ViewDefinitionInput, options: QueryGeneratorOptions = {}): TranspilationResult {
+export function transpile(
+  viewDefinition: ViewDefinitionInput,
+  options: QueryGeneratorOptions = {},
+): TranspilationResult {
   const sqlOnFhir = new SqlOnFhir(options);
   return sqlOnFhir.transpile(viewDefinition);
 }
@@ -110,7 +134,11 @@ export function transpile(viewDefinition: ViewDefinitionInput, options: QueryGen
 /**
  * Convenience function to create a VIEW statement.
  */
-export function createView(viewDefinition: ViewDefinitionInput, viewName?: string, options: QueryGeneratorOptions = {}): string {
+export function createView(
+  viewDefinition: ViewDefinitionInput,
+  viewName?: string,
+  options: QueryGeneratorOptions = {},
+): string {
   const sqlOnFhir = new SqlOnFhir(options);
   return sqlOnFhir.createView(viewDefinition, viewName);
 }
@@ -118,7 +146,11 @@ export function createView(viewDefinition: ViewDefinitionInput, viewName?: strin
 /**
  * Convenience function to create a TABLE statement.
  */
-export function createTable(viewDefinition: ViewDefinitionInput, tableName?: string, options: QueryGeneratorOptions = {}): string {
+export function createTable(
+  viewDefinition: ViewDefinitionInput,
+  tableName?: string,
+  options: QueryGeneratorOptions = {},
+): string {
   const sqlOnFhir = new SqlOnFhir(options);
   return sqlOnFhir.createTable(viewDefinition, tableName);
 }

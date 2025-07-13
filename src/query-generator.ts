@@ -3,15 +3,18 @@
  * Generates SQL queries that can be executed against MS SQL Server.
  */
 
-import {FHIRPathTranspiler, TranspilerContext} from './fhirpath-transpiler.js';
+import {
+  FHIRPathTranspiler,
+  TranspilerContext,
+} from "./fhirpath-transpiler.js";
 import {
   ColumnInfo,
   TranspilationResult,
   ViewDefinition,
   ViewDefinitionColumn,
   ViewDefinitionSelect,
-  ViewDefinitionWhere
-} from './types.js';
+  ViewDefinitionWhere,
+} from "./types.js";
 
 interface SelectCombination {
   selects: ViewDefinitionSelect[];
@@ -30,11 +33,11 @@ export class QueryGenerator {
 
   constructor(options: QueryGeneratorOptions = {}) {
     this.options = {
-      tableName: 'fhir_resources',
-      schemaName: 'dbo',
-      resourceIdColumn: 'id',
-      resourceJsonColumn: 'json',
-      ...options
+      tableName: "fhir_resources",
+      schemaName: "dbo",
+      resourceIdColumn: "id",
+      resourceJsonColumn: "json",
+      ...options,
     };
   }
 
@@ -47,16 +50,20 @@ export class QueryGenerator {
       const columns = this.collectAllColumns(viewDef.select);
 
       // Check if we need to generate multiple SELECT statements for UNION ALL
-      const selectStatements = this.generateAllSelectStatements(viewDef, context);
+      const selectStatements = this.generateAllSelectStatements(
+        viewDef,
+        context,
+      );
 
-      const sql = selectStatements.length > 1
-          ? selectStatements.join('\nUNION ALL\n')
+      const sql =
+        selectStatements.length > 1
+          ? selectStatements.join("\nUNION ALL\n")
           : selectStatements[0];
 
       return {
         sql,
         columns,
-        parameters: {}
+        parameters: {},
       };
     } catch (error) {
       throw new Error(`Failed to generate query for ViewDefinition: ${error}`);
@@ -66,7 +73,10 @@ export class QueryGenerator {
   /**
    * Generate all complete SELECT statements, handling unionAll properly.
    */
-  private generateAllSelectStatements(viewDef: ViewDefinition, context: TranspilerContext): string[] {
+  private generateAllSelectStatements(
+    viewDef: ViewDefinition,
+    context: TranspilerContext,
+  ): string[] {
     // Find all unionAll combinations
     const unionCombinations = this.expandUnionCombinations(viewDef.select);
 
@@ -76,7 +86,10 @@ export class QueryGenerator {
     const forEachPath = this.hasForEachFiltering(viewDef.select);
 
     for (const combination of unionCombinations) {
-      const selectClause = this.generateSelectClauseForCombination(combination, context);
+      const selectClause = this.generateSelectClauseForCombination(
+        combination,
+        context,
+      );
       const fromClause = this.generateFromClause(viewDef, context);
       const whereClause = this.generateWhereClause(viewDef.where, context);
 
@@ -105,7 +118,10 @@ export class QueryGenerator {
   /**
    * Generate a filter condition for forEach.
    */
-  private generateForEachFilter(forEachPath: string, context: TranspilerContext): string {
+  private generateForEachFilter(
+    forEachPath: string,
+    context: TranspilerContext,
+  ): string {
     // For forEach: "name", we want to filter to only rows where the name array exists and has elements
     // Use JSON_QUERY to check if the array exists and has at least one element
     return `(JSON_QUERY(${context.resourceAlias}.json, '$.${forEachPath}[0]') IS NOT NULL)`;
@@ -124,36 +140,44 @@ export class QueryGenerator {
     }
 
     return {
-      resourceAlias: 'r',
-      constants
+      resourceAlias: "r",
+      constants,
     };
   }
 
   /**
    * Generate SQL expression for a column.
    */
-  private generateColumnExpression(column: ViewDefinitionColumn, context: TranspilerContext): string {
+  private generateColumnExpression(
+    column: ViewDefinitionColumn,
+    context: TranspilerContext,
+  ): string {
     try {
       const expression = FHIRPathTranspiler.transpile(column.path, context);
 
       // Handle type casting if specified
       if (column.type) {
         const sqlType = FHIRPathTranspiler.inferSqlType(column.type);
-        if (sqlType !== 'NVARCHAR(MAX)') {
+        if (sqlType !== "NVARCHAR(MAX)") {
           return `CAST(${expression} AS ${sqlType})`;
         }
       }
 
       return expression;
     } catch (error) {
-      throw new Error(`Failed to transpile column '${column.name}' with path '${column.path}': ${error}`);
+      throw new Error(
+        `Failed to transpile column '${column.name}' with path '${column.path}': ${error}`,
+      );
     }
   }
 
   /**
    * Generate the FROM clause.
    */
-  private generateFromClause(viewDef: ViewDefinition, context: TranspilerContext): string {
+  private generateFromClause(
+    viewDef: ViewDefinition,
+    context: TranspilerContext,
+  ): string {
     const tableName = `[${this.options.schemaName}].[${this.options.tableName}]`;
     let fromClause = `FROM ${tableName} AS [${context.resourceAlias}]`;
 
@@ -167,7 +191,10 @@ export class QueryGenerator {
   /**
    * Generate the WHERE clause for view-level filters.
    */
-  private generateWhereClause(whereConditions: ViewDefinitionWhere[] | undefined, context: TranspilerContext): string | null {
+  private generateWhereClause(
+    whereConditions: ViewDefinitionWhere[] | undefined,
+    context: TranspilerContext,
+  ): string | null {
     if (!whereConditions || whereConditions.length === 0) {
       return null;
     }
@@ -180,8 +207,10 @@ export class QueryGenerator {
 
         // Check if this looks like a simple boolean field reference that needs to be cast
         // Only apply this to simple field references, not complex expressions
-        const booleanFields = ['active', 'deceased', 'multipleBirth'];
-        const simpleBooleanFieldPattern = new RegExp(`^JSON_VALUE\\([^,]+,\\s*'\\$\\.(${booleanFields.join('|')})'\\)$`);
+        const booleanFields = ["active", "deceased", "multipleBirth"];
+        const simpleBooleanFieldPattern = new RegExp(
+          `^JSON_VALUE\\([^,]+,\\s*'\\$\\.(${booleanFields.join("|")})'\\)$`,
+        );
 
         if (simpleBooleanFieldPattern.test(condition.trim())) {
           // Convert JSON_VALUE result to boolean: CAST(JSON_VALUE(...) as BIT) = 1
@@ -190,18 +219,22 @@ export class QueryGenerator {
           conditions.push(condition);
         }
       } catch (error) {
-        throw new Error(`Failed to transpile where condition '${where.path}': ${error}`);
+        throw new Error(
+          `Failed to transpile where condition '${where.path}': ${error}`,
+        );
       }
     }
 
-    return `  AND (${conditions.join(') AND (')})`;
+    return `  AND (${conditions.join(") AND (")})`;
   }
 
   /**
    * Expand all possible unionAll combinations from select elements.
    */
-  private expandUnionCombinations(selects: ViewDefinitionSelect[]): SelectCombination[] {
-    let combinations: SelectCombination[] = [{selects: [], unionChoices: []}];
+  private expandUnionCombinations(
+    selects: ViewDefinitionSelect[],
+  ): SelectCombination[] {
+    let combinations: SelectCombination[] = [{ selects: [], unionChoices: [] }];
 
     for (const select of selects) {
       combinations = this.expandSelectCombinations(select, combinations);
@@ -213,7 +246,10 @@ export class QueryGenerator {
   /**
    * Expand combinations for a single select element.
    */
-  private expandSelectCombinations(select: ViewDefinitionSelect, currentCombinations: SelectCombination[]): SelectCombination[] {
+  private expandSelectCombinations(
+    select: ViewDefinitionSelect,
+    currentCombinations: SelectCombination[],
+  ): SelectCombination[] {
     const newCombinations: SelectCombination[] = [];
 
     for (const combination of currentCombinations) {
@@ -222,7 +258,7 @@ export class QueryGenerator {
         for (let i = 0; i < select.unionAll.length; i++) {
           const newCombination: SelectCombination = {
             selects: [...combination.selects, select],
-            unionChoices: [...combination.unionChoices, i]
+            unionChoices: [...combination.unionChoices, i],
           };
           newCombinations.push(newCombination);
         }
@@ -230,7 +266,7 @@ export class QueryGenerator {
         // No unionAll, just add the select to existing combinations
         const newCombination: SelectCombination = {
           selects: [...combination.selects, select],
-          unionChoices: [...combination.unionChoices, -1] // -1 means no union choice
+          unionChoices: [...combination.unionChoices, -1], // -1 means no union choice
         };
         newCombinations.push(newCombination);
       }
@@ -242,7 +278,10 @@ export class QueryGenerator {
   /**
    * Generate SELECT clause for a specific combination.
    */
-  private generateSelectClauseForCombination(combination: SelectCombination, context: TranspilerContext): string {
+  private generateSelectClauseForCombination(
+    combination: SelectCombination,
+    context: TranspilerContext,
+  ): string {
     const columnParts: string[] = [];
 
     for (let i = 0; i < combination.selects.length; i++) {
@@ -253,13 +292,17 @@ export class QueryGenerator {
       this.addUnionAllColumns(select, unionChoice, columnParts, context);
     }
 
-    return `SELECT\n  ${columnParts.join(',\n  ')}`;
+    return `SELECT\n  ${columnParts.join(",\n  ")}`;
   }
 
   /**
    * Add columns from a select element to the column parts array.
    */
-  private addSelectElementColumns(select: ViewDefinitionSelect, columnParts: string[], context: TranspilerContext): void {
+  private addSelectElementColumns(
+    select: ViewDefinitionSelect,
+    columnParts: string[],
+    context: TranspilerContext,
+  ): void {
     // Add regular columns
     if (select.column) {
       this.addColumnsToList(select.column, columnParts, context);
@@ -268,7 +311,10 @@ export class QueryGenerator {
     // Add nested select columns
     if (select.select) {
       for (const nestedSelect of select.select) {
-        const nestedColumns = this.generateSelectElementColumns(nestedSelect, context);
+        const nestedColumns = this.generateSelectElementColumns(
+          nestedSelect,
+          context,
+        );
         columnParts.push(...nestedColumns);
       }
     }
@@ -277,8 +323,17 @@ export class QueryGenerator {
   /**
    * Add unionAll columns for the chosen combination.
    */
-  private addUnionAllColumns(select: ViewDefinitionSelect, unionChoice: number, columnParts: string[], context: TranspilerContext): void {
-    if (select.unionAll && unionChoice >= 0 && unionChoice < select.unionAll.length) {
+  private addUnionAllColumns(
+    select: ViewDefinitionSelect,
+    unionChoice: number,
+    columnParts: string[],
+    context: TranspilerContext,
+  ): void {
+    if (
+      select.unionAll &&
+      unionChoice >= 0 &&
+      unionChoice < select.unionAll.length
+    ) {
       const chosenUnion = select.unionAll[unionChoice];
       if (chosenUnion.column) {
         this.addColumnsToList(chosenUnion.column, columnParts, context);
@@ -289,7 +344,11 @@ export class QueryGenerator {
   /**
    * Add columns to the column parts list (shared logic to reduce duplication).
    */
-  private addColumnsToList(columns: ViewDefinitionColumn[], columnParts: string[], context: TranspilerContext): void {
+  private addColumnsToList(
+    columns: ViewDefinitionColumn[],
+    columnParts: string[],
+    context: TranspilerContext,
+  ): void {
     for (const column of columns) {
       const columnSql = this.generateColumnExpression(column, context);
       columnParts.push(`${columnSql} AS [${column.name}]`);
@@ -299,7 +358,10 @@ export class QueryGenerator {
   /**
    * Generate column expressions for a select element (used for nested selects).
    */
-  private generateSelectElementColumns(select: ViewDefinitionSelect, context: TranspilerContext): string[] {
+  private generateSelectElementColumns(
+    select: ViewDefinitionSelect,
+    context: TranspilerContext,
+  ): string[] {
     const columnParts: string[] = [];
 
     if (select.column) {
@@ -308,7 +370,10 @@ export class QueryGenerator {
 
     if (select.select) {
       for (const nestedSelect of select.select) {
-        const nestedColumns = this.generateSelectElementColumns(nestedSelect, context);
+        const nestedColumns = this.generateSelectElementColumns(
+          nestedSelect,
+          context,
+        );
         columnParts.push(...nestedColumns);
       }
     }
@@ -347,7 +412,7 @@ export class QueryGenerator {
             name: column.name,
             type: FHIRPathTranspiler.inferSqlType(column.type),
             nullable: true, // FHIR data is generally nullable
-            description: column.description
+            description: column.description,
           });
         }
       }
@@ -370,11 +435,26 @@ export class QueryGenerator {
   private getConstantValue(constant: any): any {
     // Check all possible value types
     const valueProperties = [
-      'valueString', 'valueInteger', 'valueDecimal', 'valueBoolean',
-      'valueDate', 'valueDateTime', 'valueTime', 'valueInstant',
-      'valueCode', 'valueId', 'valueUri', 'valueUrl', 'valueCanonical',
-      'valueUuid', 'valueOid', 'valueMarkdown', 'valueBase64Binary',
-      'valuePositiveInt', 'valueUnsignedInt', 'valueInteger64'
+      "valueString",
+      "valueInteger",
+      "valueDecimal",
+      "valueBoolean",
+      "valueDate",
+      "valueDateTime",
+      "valueTime",
+      "valueInstant",
+      "valueCode",
+      "valueId",
+      "valueUri",
+      "valueUrl",
+      "valueCanonical",
+      "valueUuid",
+      "valueOid",
+      "valueMarkdown",
+      "valueBase64Binary",
+      "valuePositiveInt",
+      "valueUnsignedInt",
+      "valueInteger64",
     ];
 
     for (const prop of valueProperties) {
@@ -384,8 +464,11 @@ export class QueryGenerator {
     }
 
     // Check for complex types
-    const complexType = constant.valueCodeableConcept ?? constant.valueCoding ??
-        constant.valueQuantity ?? constant.valueReference;
+    const complexType =
+      constant.valueCodeableConcept ??
+      constant.valueCoding ??
+      constant.valueQuantity ??
+      constant.valueReference;
     if (complexType) {
       return complexType;
     }
@@ -398,7 +481,7 @@ export class QueryGenerator {
    */
   generateCreateView(viewDef: ViewDefinition, viewName?: string): string {
     const result = this.generateQuery(viewDef);
-    const actualViewName = (viewName ?? viewDef.name) ?? 'generated_view';
+    const actualViewName = viewName ?? viewDef.name ?? "generated_view";
 
     return `CREATE VIEW [${this.options.schemaName}].[${actualViewName}] AS\n${result.sql}`;
   }
@@ -408,15 +491,17 @@ export class QueryGenerator {
    */
   generateCreateTable(viewDef: ViewDefinition, tableName?: string): string {
     const columns = this.collectAllColumns(viewDef.select);
-    const actualTableName = tableName ?? (viewDef.name ? `${viewDef.name}_table` : 'generated_table');
+    const actualTableName =
+      tableName ?? (viewDef.name ? `${viewDef.name}_table` : "generated_table");
 
-    const columnDefinitions = columns.map(col =>
-        `  [${col.name}] ${col.type}${col.nullable ? ' NULL' : ' NOT NULL'}`
+    const columnDefinitions = columns.map(
+      (col) =>
+        `  [${col.name}] ${col.type}${col.nullable ? " NULL" : " NOT NULL"}`,
     );
 
     return `CREATE TABLE [${this.options.schemaName}].[${actualTableName}]
             (
-                ${columnDefinitions.join(',\n')}
+                ${columnDefinitions.join(",\n")}
             )`;
   }
 }

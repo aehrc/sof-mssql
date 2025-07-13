@@ -4,35 +4,37 @@
  * Command-line interface for SQL on FHIR MS SQL transpiler.
  */
 
-import {Command} from 'commander';
-import {readFileSync, writeFileSync} from 'fs';
-import {createTable, createView, SqlOnFhir, transpile} from './index.js';
+import { Command } from "commander";
+import { readFileSync, writeFileSync } from "fs";
+import { createTable, createView, SqlOnFhir, transpile } from "./index.js";
 
 const program = new Command();
 
 program
-  .name('sof-mssql')
-  .description('SQL on FHIR MS SQL transpiler - converts ViewDefinitions to T-SQL queries')
-  .version('1.0.0');
+  .name("sof-mssql")
+  .description(
+    "SQL on FHIR MS SQL transpiler - converts ViewDefinitions to T-SQL queries",
+  )
+  .version("1.0.0");
 
 program
-  .command('transpile')
-  .description('Transpile a ViewDefinition to T-SQL query')
-  .argument('<input>', 'Input ViewDefinition file (JSON)')
-  .option('-o, --output <file>', 'Output file for generated SQL')
-  .option('-t, --table <name>', 'FHIR resources table name', 'fhir_resources')
-  .option('-s, --schema <name>', 'Database schema name', 'dbo')
-  .option('--id-column <name>', 'Resource ID column name', 'id')
-  .option('--json-column <name>', 'Resource JSON column name', 'json')
+  .command("transpile")
+  .description("Transpile a ViewDefinition to T-SQL query")
+  .argument("<input>", "Input ViewDefinition file (JSON)")
+  .option("-o, --output <file>", "Output file for generated SQL")
+  .option("-t, --table <name>", "FHIR resources table name", "fhir_resources")
+  .option("-s, --schema <name>", "Database schema name", "dbo")
+  .option("--id-column <name>", "Resource ID column name", "id")
+  .option("--json-column <name>", "Resource JSON column name", "json")
   .action((input, options) => {
     try {
-      const viewDefJson = readFileSync(input, 'utf8');
-      
+      const viewDefJson = readFileSync(input, "utf8");
+
       const result = transpile(viewDefJson, {
         tableName: options.table,
         schemaName: options.schema,
         resourceIdColumn: options.idColumn,
-        resourceJsonColumn: options.jsonColumn
+        resourceJsonColumn: options.jsonColumn,
       });
 
       if (options.output) {
@@ -43,35 +45,37 @@ program
       }
 
       // Print column information
-      console.error('\n-- Column Information:');
+      console.error("\n-- Column Information:");
       for (const col of result.columns) {
-        console.error(`-- ${col.name}: ${col.type}${col.description ? ' - ' + col.description : ''}`);
+        console.error(
+          `-- ${col.name}: ${col.type}${col.description ? " - " + col.description : ""}`,
+        );
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error("Error:", error);
       process.exit(1);
     }
   });
 
 program
-  .command('create-view')
-  .description('Generate CREATE VIEW statement')
-  .argument('<input>', 'Input ViewDefinition file (JSON)')
-  .argument('[view-name]', 'Name for the created view')
-  .option('-o, --output <file>', 'Output file for generated SQL')
-  .option('-t, --table <name>', 'FHIR resources table name', 'fhir_resources')
-  .option('-s, --schema <name>', 'Database schema name', 'dbo')
-  .option('--id-column <name>', 'Resource ID column name', 'id')
-  .option('--json-column <name>', 'Resource JSON column name', 'json')
+  .command("create-view")
+  .description("Generate CREATE VIEW statement")
+  .argument("<input>", "Input ViewDefinition file (JSON)")
+  .argument("[view-name]", "Name for the created view")
+  .option("-o, --output <file>", "Output file for generated SQL")
+  .option("-t, --table <name>", "FHIR resources table name", "fhir_resources")
+  .option("-s, --schema <name>", "Database schema name", "dbo")
+  .option("--id-column <name>", "Resource ID column name", "id")
+  .option("--json-column <name>", "Resource JSON column name", "json")
   .action((input, viewName, options) => {
     try {
-      const viewDefJson = readFileSync(input, 'utf8');
-      
+      const viewDefJson = readFileSync(input, "utf8");
+
       const sql = createView(viewDefJson, viewName, {
         tableName: options.table,
         schemaName: options.schema,
         resourceIdColumn: options.idColumn,
-        resourceJsonColumn: options.jsonColumn
+        resourceJsonColumn: options.jsonColumn,
       });
 
       if (options.output) {
@@ -81,30 +85,30 @@ program
         console.log(sql);
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error("Error:", error);
       process.exit(1);
     }
   });
 
 program
-  .command('create-table')
-  .description('Generate CREATE TABLE statement for materialised view')
-  .argument('<input>', 'Input ViewDefinition file (JSON)')
-  .argument('[table-name]', 'Name for the created table')
-  .option('-o, --output <file>', 'Output file for generated SQL')
-  .option('-t, --table <name>', 'FHIR resources table name', 'fhir_resources')
-  .option('-s, --schema <name>', 'Database schema name', 'dbo')
-  .option('--id-column <name>', 'Resource ID column name', 'id')
-  .option('--json-column <name>', 'Resource JSON column name', 'json')
+  .command("create-table")
+  .description("Generate CREATE TABLE statement for materialised view")
+  .argument("<input>", "Input ViewDefinition file (JSON)")
+  .argument("[table-name]", "Name for the created table")
+  .option("-o, --output <file>", "Output file for generated SQL")
+  .option("-t, --table <name>", "FHIR resources table name", "fhir_resources")
+  .option("-s, --schema <name>", "Database schema name", "dbo")
+  .option("--id-column <name>", "Resource ID column name", "id")
+  .option("--json-column <name>", "Resource JSON column name", "json")
   .action((input, tableName, options) => {
     try {
-      const viewDefJson = readFileSync(input, 'utf8');
-      
+      const viewDefJson = readFileSync(input, "utf8");
+
       const sql = createTable(viewDefJson, tableName, {
         tableName: options.table,
         schemaName: options.schema,
         resourceIdColumn: options.idColumn,
-        resourceJsonColumn: options.jsonColumn
+        resourceJsonColumn: options.jsonColumn,
       });
 
       if (options.output) {
@@ -114,51 +118,54 @@ program
         console.log(sql);
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error("Error:", error);
       process.exit(1);
     }
   });
 
 program
-  .command('validate')
-  .description('Validate a ViewDefinition file')
-  .argument('<input>', 'Input ViewDefinition file (JSON)')
+  .command("validate")
+  .description("Validate a ViewDefinition file")
+  .argument("<input>", "Input ViewDefinition file (JSON)")
   .action((input) => {
     try {
-      const viewDefJson = readFileSync(input, 'utf8');
+      const viewDefJson = readFileSync(input, "utf8");
       const viewDef = SqlOnFhir.parseViewDefinition(viewDefJson);
       console.log(`✓ ViewDefinition is valid`);
       console.log(`  Resource: ${viewDef.resource}`);
-      console.log(`  Name: ${viewDef.name ?? 'unnamed'}`);
+      console.log(`  Name: ${viewDef.name ?? "unnamed"}`);
       console.log(`  Status: ${viewDef.status}`);
-      
+
       const columns = SqlOnFhir.getColumnNames(viewDef);
-      console.log(`  Columns: ${columns.join(', ')}`);
+      console.log(`  Columns: ${columns.join(", ")}`);
     } catch (error) {
-      console.error('✗ ViewDefinition is invalid:', error);
+      console.error("✗ ViewDefinition is invalid:", error);
       process.exit(1);
     }
   });
 
 program
-  .command('test')
-  .description('Run tests from sql-on-fhir-v2 test suite')
-  .argument('<test-path>', 'Test suite file (JSON) or directory containing test files')
-  .option('-c, --connection <string>', 'SQL Server connection string')
-  .option('--host <host>', 'SQL Server host', 'localhost')
-  .option('--port <port>', 'SQL Server port', '1433')
-  .option('--database <db>', 'Database name', 'test')
-  .option('--user <user>', 'Username')
-  .option('--password <password>', 'Password')
-  .option('-t, --table <name>', 'FHIR resources table name', 'fhir_resources')
-  .option('-s, --schema <name>', 'Database schema name', 'dbo')
-  .option('--encrypt', 'Enable encryption', true)
-  .option('--trust-cert', 'Trust server certificate', true)
+  .command("test")
+  .description("Run tests from sql-on-fhir-v2 test suite")
+  .argument(
+    "<test-path>",
+    "Test suite file (JSON) or directory containing test files",
+  )
+  .option("-c, --connection <string>", "SQL Server connection string")
+  .option("--host <host>", "SQL Server host", "localhost")
+  .option("--port <port>", "SQL Server port", "1433")
+  .option("--database <db>", "Database name", "test")
+  .option("--user <user>", "Username")
+  .option("--password <password>", "Password")
+  .option("-t, --table <name>", "FHIR resources table name", "fhir_resources")
+  .option("-s, --schema <name>", "Database schema name", "dbo")
+  .option("--encrypt", "Enable encryption", true)
+  .option("--trust-cert", "Trust server certificate", true)
   .action(async (testPath, options) => {
     try {
-      const { TestRunner } = await import('./test-runner.js');
-      const { statSync } = await import('fs');
-      
+      const { TestRunner } = await import("./test-runner.js");
+      const { statSync } = await import("fs");
+
       const config = {
         connectionString: options.connection,
         server: options.host,
@@ -170,22 +177,31 @@ program
         schemaName: options.schema,
         options: {
           encrypt: options.encrypt,
-          trustServerCertificate: options.trustCert
-        }
+          trustServerCertificate: options.trustCert,
+        },
       };
 
       // Check if testPath is a file or directory
       const stats = statSync(testPath);
-      
+
       if (stats.isDirectory()) {
         // Run all JSON test files in the directory
         console.log(`Running all test suites in directory: ${testPath}`);
-        const results = await TestRunner.runTestSuitesFromDirectory(testPath, config);
+        const results = await TestRunner.runTestSuitesFromDirectory(
+          testPath,
+          config,
+        );
         TestRunner.printDirectoryResults(results);
-        
-        const totalPassed = results.reduce((sum: number, result) => sum + result.passedCount, 0);
-        const totalTests = results.reduce((sum: number, result) => sum + result.totalCount, 0);
-        
+
+        const totalPassed = results.reduce(
+          (sum: number, result) => sum + result.passedCount,
+          0,
+        );
+        const totalTests = results.reduce(
+          (sum: number, result) => sum + result.totalCount,
+          0,
+        );
+
         if (totalPassed !== totalTests) {
           process.exit(1);
         }
@@ -194,20 +210,20 @@ program
         console.log(`Running test suite: ${testPath}`);
         const result = await TestRunner.runTestSuiteFromFile(testPath, config);
         TestRunner.printResults(result);
-        
+
         if (result.passedCount !== result.totalCount) {
           process.exit(1);
         }
       }
     } catch (error) {
-      console.error('Error running tests:', error);
+      console.error("Error running tests:", error);
       process.exit(1);
     }
   });
 
 program
-  .command('examples')
-  .description('Show usage examples')
+  .command("examples")
+  .description("Show usage examples")
   .action(() => {
     console.log(`
 SQL on FHIR MS SQL Transpiler Examples:
@@ -261,9 +277,9 @@ Example ViewDefinition (patient-view.json):
   });
 
 // Handle unknown commands
-program.on('command:*', function (operands) {
+program.on("command:*", function (operands) {
   console.error(`Unknown command: ${operands[0]}`);
-  console.error('Use --help to see available commands');
+  console.error("Use --help to see available commands");
   process.exit(1);
 });
 

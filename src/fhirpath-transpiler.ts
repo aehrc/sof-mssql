@@ -3,7 +3,7 @@
  * Converts FHIRPath expressions to equivalent T-SQL expressions for MS SQL Server.
  */
 
-import * as fhirpath from 'fhirpath';
+import * as fhirpath from "fhirpath";
 
 export interface TranspilerContext {
   resourceAlias: string;
@@ -19,12 +19,14 @@ export class FHIRPathTranspiler {
     try {
       // Parse the FHIRPath expression to understand its structure
       const parsed = fhirpath.parse(expression);
-      
+
       // Navigate to the actual expression node
       const expressionNode = this.extractExpressionNode(parsed);
       return this.transpileNode(expressionNode, context);
     } catch (error) {
-      throw new Error(`Failed to transpile FHIRPath expression '${expression}': ${error}`);
+      throw new Error(
+        `Failed to transpile FHIRPath expression '${expression}': ${error}`,
+      );
     }
   }
 
@@ -35,30 +37,30 @@ export class FHIRPathTranspiler {
     // The FHIRPath parser returns a nested structure like:
     // { children: [{ type: "EntireExpression", children: [{ type: "TermExpression", ... }] }] }
     // We need to navigate to the actual expression
-    
+
     if (!parsed?.children || parsed.children.length === 0) {
       return null;
     }
 
     let current = parsed.children[0]; // EntireExpression
-    
+
     // Navigate down to find the actual expression content
     while (current?.children && current.children.length > 0) {
-      if (current.type === 'EntireExpression') {
+      if (current.type === "EntireExpression") {
         current = current.children[0]; // Could be AndExpression, OrExpression, TermExpression, etc.
-      } else if (current.type === 'TermExpression') {
+      } else if (current.type === "TermExpression") {
         current = current.children[0]; // InvocationTerm, LiteralTerm, etc.
-      } else if (current.type === 'InvocationTerm') {
+      } else if (current.type === "InvocationTerm") {
         current = current.children[0]; // MemberInvocation or other types
-      } else if (current.type === 'MemberInvocation') {
+      } else if (current.type === "MemberInvocation") {
         current = current.children[0]; // Identifier or other types
-      } else if (current.type === 'LiteralTerm') {
+      } else if (current.type === "LiteralTerm") {
         current = current.children[0]; // StringLiteral, NumberLiteral, etc.
       } else {
         break; // We've reached an expression node we can handle
       }
     }
-    
+
     return current;
   }
 
@@ -67,67 +69,67 @@ export class FHIRPathTranspiler {
    */
   private static transpileNode(node: any, context: TranspilerContext): string {
     if (!node) {
-      return 'NULL';
+      return "NULL";
     }
 
     switch (node.type) {
-      case 'FunctionInvocation':
+      case "FunctionInvocation":
         return this.transpileFunction(node, context);
-      
-      case 'Identifier':
+
+      case "Identifier":
         return this.transpileIdentifier(node, context);
-      
-      case 'StringLiteral':
+
+      case "StringLiteral":
         return this.transpileStringLiteral(node);
-      
-      case 'NumberLiteral':
+
+      case "NumberLiteral":
         return this.transpileNumberLiteral(node);
-      
-      case 'BooleanLiteral':
+
+      case "BooleanLiteral":
         return this.transpileBooleanLiteral(node);
-      
-      case 'AxisExpression':
+
+      case "AxisExpression":
         return this.transpileAxisExpression(node, context);
-      
-      case 'FilterExpression':
+
+      case "FilterExpression":
         return this.transpileFilterExpression(node, context);
-      
-      case 'InvocationExpression':
+
+      case "InvocationExpression":
         return this.transpileInvocationExpression(node, context);
-      
-      case 'BinaryExpression':
+
+      case "BinaryExpression":
         return this.transpileBinaryExpression(node, context);
-      
-      case 'UnaryExpression':
+
+      case "UnaryExpression":
         return this.transpileUnaryExpression(node, context);
-      
-      case 'ParenthesizedExpression':
+
+      case "ParenthesizedExpression":
         return `(${this.transpileNode(node.expression, context)})`;
-      
-      case 'AndExpression':
+
+      case "AndExpression":
         return this.transpileAndExpression(node, context);
-      
-      case 'OrExpression':
+
+      case "OrExpression":
         return this.transpileOrExpression(node, context);
-      
-      case 'EqualityExpression':
+
+      case "EqualityExpression":
         return this.transpileEqualityExpression(node, context);
-      
-      case 'InequalityExpression':
+
+      case "InequalityExpression":
         return this.transpileInequalityExpression(node, context);
-      
-      case 'TermExpression':
+
+      case "TermExpression":
         return this.transpileTermExpression(node, context);
-      
-      case 'InvocationTerm':
+
+      case "InvocationTerm":
         return this.transpileInvocationTerm(node, context);
-      
-      case 'LiteralTerm':
+
+      case "LiteralTerm":
         return this.transpileLiteralTerm(node, context);
-      
-      case 'MemberInvocation':
+
+      case "MemberInvocation":
         return this.transpileMemberInvocation(node, context);
-      
+
       default:
         throw new Error(`Unsupported FHIRPath node type: ${node.type}`);
     }
@@ -136,7 +138,10 @@ export class FHIRPathTranspiler {
   /**
    * Transpile function invocations.
    */
-  private static transpileFunction(node: any, context: TranspilerContext): string {
+  private static transpileFunction(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     const functionName = this.extractFunctionName(node);
     const args = node.params ?? [];
 
@@ -150,46 +155,54 @@ export class FHIRPathTranspiler {
     if (node.name) {
       return node.name;
     }
-    
+
     if (node.children && node.children.length > 0) {
       const funcNode = node.children[0];
-      if (funcNode.type === 'Functn') {
+      if (funcNode.type === "Functn") {
         if (funcNode.children && funcNode.children.length > 0) {
           const identifierNode = funcNode.children[0];
           return this.extractIdentifierName(identifierNode);
         } else {
-          throw new Error(`Could not find function identifier in Functn node: ${JSON.stringify(funcNode)}`);
+          throw new Error(
+            `Could not find function identifier in Functn node: ${JSON.stringify(funcNode)}`,
+          );
         }
       } else {
         return this.extractIdentifierName(funcNode);
       }
     }
-    
-    throw new Error(`Could not extract function name from node: ${JSON.stringify(node)}`);
+
+    throw new Error(
+      `Could not extract function name from node: ${JSON.stringify(node)}`,
+    );
   }
 
   /**
    * Execute the appropriate function handler based on function name.
    */
-  private static executeFunctionHandler(functionName: string, args: any[], context: TranspilerContext): string {
+  private static executeFunctionHandler(
+    functionName: string,
+    args: any[],
+    context: TranspilerContext,
+  ): string {
     switch (functionName) {
-      case 'exists':
+      case "exists":
         return this.handleExistsFunction(args, context);
-      case 'empty':
+      case "empty":
         return this.handleEmptyFunction(args, context);
-      case 'first':
+      case "first":
         return this.handleFirstFunction(args, context);
-      case 'last':
+      case "last":
         return this.handleLastFunction(args, context);
-      case 'count':
+      case "count":
         return this.handleCountFunction(args, context);
-      case 'join':
+      case "join":
         return this.handleJoinFunction(args, context);
-      case 'where':
+      case "where":
         return this.handleWhereFunction(args, context);
-      case 'select':
+      case "select":
         return this.handleSelectFunction(args, context);
-      case 'getResourceKey':
+      case "getResourceKey":
         return this.handleGetResourceKeyFunction(context);
       default:
         throw new Error(`Unsupported FHIRPath function: ${functionName}`);
@@ -199,7 +212,10 @@ export class FHIRPathTranspiler {
   /**
    * Handle exists() function.
    */
-  private static handleExistsFunction(args: any[], context: TranspilerContext): string {
+  private static handleExistsFunction(
+    args: any[],
+    context: TranspilerContext,
+  ): string {
     if (args.length === 0) {
       return `(${context.resourceAlias}.json IS NOT NULL)`;
     } else {
@@ -211,7 +227,10 @@ export class FHIRPathTranspiler {
   /**
    * Handle empty() function.
    */
-  private static handleEmptyFunction(args: any[], context: TranspilerContext): string {
+  private static handleEmptyFunction(
+    args: any[],
+    context: TranspilerContext,
+  ): string {
     if (args.length === 0) {
       return `(${context.resourceAlias}.json IS NULL)`;
     } else {
@@ -223,7 +242,10 @@ export class FHIRPathTranspiler {
   /**
    * Handle first() function.
    */
-  private static handleFirstFunction(args: any[], context: TranspilerContext): string {
+  private static handleFirstFunction(
+    args: any[],
+    context: TranspilerContext,
+  ): string {
     if (args.length === 0) {
       return this.handleFirstWithoutArgs(context);
     } else {
@@ -246,8 +268,10 @@ export class FHIRPathTranspiler {
   /**
    * Handle first() function when iteration context is available.
    */
-  private static handleFirstWithIterationContext(context: TranspilerContext): string {
-    if (context.iterationContext!.includes('JSON_VALUE')) {
+  private static handleFirstWithIterationContext(
+    context: TranspilerContext,
+  ): string {
+    if (context.iterationContext!.includes("JSON_VALUE")) {
       return this.handleFirstWithJsonValue(context);
     }
     return `JSON_VALUE(${context.iterationContext}, '$[0]')`;
@@ -257,7 +281,9 @@ export class FHIRPathTranspiler {
    * Handle first() function when iteration context contains JSON_VALUE.
    */
   private static handleFirstWithJsonValue(context: TranspilerContext): string {
-    const pathMatch = RegExp(/JSON_VALUE\(([^,]+),\s*'([^']+)'\)/).exec(context.iterationContext!);
+    const pathMatch = RegExp(/JSON_VALUE\(([^,]+),\s*'([^']+)'\)/).exec(
+      context.iterationContext!,
+    );
     if (pathMatch) {
       return this.processJsonValueMatch(pathMatch[1], pathMatch[2]);
     }
@@ -268,7 +294,7 @@ export class FHIRPathTranspiler {
    * Process a matched JSON_VALUE expression for first() function.
    */
   private static processJsonValueMatch(source: string, path: string): string {
-    if (!path.includes('[0]')) {
+    if (!path.includes("[0]")) {
       return this.addArrayIndexToPath(source, path);
     } else {
       return `JSON_VALUE(${source}, '${path}')`;
@@ -279,9 +305,10 @@ export class FHIRPathTranspiler {
    * Add array index [0] to a JSON path if needed.
    */
   private static addArrayIndexToPath(source: string, path: string): string {
-    const pathParts = path.split('.');
+    const pathParts = path.split(".");
     if (pathParts.length >= 2) {
-      const remainingPath = pathParts.length > 2 ? '.' + pathParts.slice(2).join('.') : '';
+      const remainingPath =
+        pathParts.length > 2 ? "." + pathParts.slice(2).join(".") : "";
       const newPath = `${pathParts[0]}.${pathParts[1]}[0]${remainingPath}`;
       return `JSON_VALUE(${source}, '${newPath}')`;
     }
@@ -291,29 +318,40 @@ export class FHIRPathTranspiler {
   /**
    * Handle last() function.
    */
-  private static handleLastFunction(args: any[], context: TranspilerContext): string {
-    const pathExpr = args.length > 0 ?
-        this.transpileNode(args[0], context) :
-        (context.iterationContext ?? `${context.resourceAlias}.json`);
+  private static handleLastFunction(
+    args: any[],
+    context: TranspilerContext,
+  ): string {
+    const pathExpr =
+      args.length > 0
+        ? this.transpileNode(args[0], context)
+        : (context.iterationContext ?? `${context.resourceAlias}.json`);
     return `JSON_VALUE(${pathExpr}, '$[last]')`;
   }
 
   /**
    * Handle count() function.
    */
-  private static handleCountFunction(args: any[], context: TranspilerContext): string {
-    const countPath = args.length > 0 ?
-        this.transpileNode(args[0], context) :
-        (context.iterationContext ?? `${context.resourceAlias}.json`);
+  private static handleCountFunction(
+    args: any[],
+    context: TranspilerContext,
+  ): string {
+    const countPath =
+      args.length > 0
+        ? this.transpileNode(args[0], context)
+        : (context.iterationContext ?? `${context.resourceAlias}.json`);
     return `JSON_ARRAY_LENGTH(${countPath})`;
   }
 
   /**
    * Handle join() function.
    */
-  private static handleJoinFunction(args: any[], context: TranspilerContext): string {
+  private static handleJoinFunction(
+    args: any[],
+    context: TranspilerContext,
+  ): string {
     if (args.length !== 1) {
-      throw new Error('join() function requires exactly one argument');
+      throw new Error("join() function requires exactly one argument");
     }
     const separator = this.transpileNode(args[0], context);
     return `STRING_AGG(JSON_VALUE(value, '$'), ${separator})`;
@@ -322,9 +360,12 @@ export class FHIRPathTranspiler {
   /**
    * Handle where() function.
    */
-  private static handleWhereFunction(args: any[], context: TranspilerContext): string {
+  private static handleWhereFunction(
+    args: any[],
+    context: TranspilerContext,
+  ): string {
     if (args.length !== 1) {
-      throw new Error('where() function requires exactly one argument');
+      throw new Error("where() function requires exactly one argument");
     }
     const whereCondition = this.transpileNode(args[0], context);
     return `CROSS APPLY OPENJSON(${context.resourceAlias}.json) WHERE ${whereCondition}`;
@@ -333,9 +374,12 @@ export class FHIRPathTranspiler {
   /**
    * Handle select() function.
    */
-  private static handleSelectFunction(args: any[], context: TranspilerContext): string {
+  private static handleSelectFunction(
+    args: any[],
+    context: TranspilerContext,
+  ): string {
     if (args.length !== 1) {
-      throw new Error('select() function requires exactly one argument');
+      throw new Error("select() function requires exactly one argument");
     }
     return this.transpileNode(args[0], context);
   }
@@ -343,14 +387,19 @@ export class FHIRPathTranspiler {
   /**
    * Handle getResourceKey() function.
    */
-  private static handleGetResourceKeyFunction(context: TranspilerContext): string {
+  private static handleGetResourceKeyFunction(
+    context: TranspilerContext,
+  ): string {
     return `${context.resourceAlias}.id`;
   }
 
   /**
    * Transpile identifiers (property access).
    */
-  private static transpileIdentifier(node: any, context: TranspilerContext): string {
+  private static transpileIdentifier(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     // Extract identifier name from the node structure
     let identifier: string;
     if (node.text) {
@@ -360,16 +409,18 @@ export class FHIRPathTranspiler {
     } else if (node.terminalNodeText && node.terminalNodeText.length > 0) {
       identifier = node.terminalNodeText[0];
     } else {
-      throw new Error(`Could not extract identifier from node: ${JSON.stringify(node)}`);
+      throw new Error(
+        `Could not extract identifier from node: ${JSON.stringify(node)}`,
+      );
     }
-    
+
     // Check if it's a constant
     if (context.constants?.[identifier]) {
       return this.formatConstantValue(context.constants[identifier]);
     }
 
     // Handle special identifiers
-    if (identifier === 'id') {
+    if (identifier === "id") {
       return `${context.resourceAlias}.id`;
     }
 
@@ -391,14 +442,16 @@ export class FHIRPathTranspiler {
       value = node.value;
     } else if (node.text) {
       // Remove surrounding quotes if present
-      value = node.text.replace(/^'(.*)'$/, '$1');
+      value = node.text.replace(/^'(.*)'$/, "$1");
     } else if (node.terminalNodeText && node.terminalNodeText.length > 0) {
       // Remove surrounding quotes if present
-      value = node.terminalNodeText[0].replace(/^'(.*)'$/, '$1');
+      value = node.terminalNodeText[0].replace(/^'(.*)'$/, "$1");
     } else {
-      throw new Error(`Could not extract string value from node: ${JSON.stringify(node)}`);
+      throw new Error(
+        `Could not extract string value from node: ${JSON.stringify(node)}`,
+      );
     }
-    
+
     return `'${value.replace(/'/g, "''")}'`;
   }
 
@@ -418,29 +471,34 @@ export class FHIRPathTranspiler {
     if (node.value !== undefined) {
       value = node.value;
     } else if (node.text) {
-      value = node.text.toLowerCase() === 'true';
+      value = node.text.toLowerCase() === "true";
     } else if (node.terminalNodeText && node.terminalNodeText.length > 0) {
-      value = node.terminalNodeText[0].toLowerCase() === 'true';
+      value = node.terminalNodeText[0].toLowerCase() === "true";
     } else {
-      throw new Error(`Could not extract boolean value from node: ${JSON.stringify(node)}`);
+      throw new Error(
+        `Could not extract boolean value from node: ${JSON.stringify(node)}`,
+      );
     }
-    
-    return value ? '1' : '0';
+
+    return value ? "1" : "0";
   }
 
   /**
    * Transpile axis expressions (property navigation).
    */
-  private static transpileAxisExpression(node: any, context: TranspilerContext): string {
+  private static transpileAxisExpression(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     const base = this.transpileNode(node.base, context);
     const property = node.axis;
 
-    if (property === 'id') {
+    if (property === "id") {
       return `${context.resourceAlias}.id`;
     }
 
     // Create nested JSON path
-    if (base.includes('JSON_VALUE')) {
+    if (base.includes("JSON_VALUE")) {
       // Extract the existing path and extend it
       const pathMatch = RegExp(/JSON_VALUE\([^,]+,\s*'([^']+)'\)/).exec(base);
       if (pathMatch) {
@@ -456,10 +514,13 @@ export class FHIRPathTranspiler {
   /**
    * Transpile filter expressions.
    */
-  private static transpileFilterExpression(node: any, context: TranspilerContext): string {
+  private static transpileFilterExpression(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     const base = this.transpileNode(node.base, context);
     const filterExpr = this.transpileNode(node.filter, context);
-    
+
     // This requires CROSS APPLY OPENJSON for complex filtering
     return `(SELECT TOP 1 value FROM OPENJSON(${base}) WHERE ${filterExpr})`;
   }
@@ -467,34 +528,50 @@ export class FHIRPathTranspiler {
   /**
    * Transpile invocation expressions (function calls on objects).
    */
-  private static transpileInvocationExpression(node: any, context: TranspilerContext): string {
+  private static transpileInvocationExpression(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     if (!node.children || node.children.length < 2) {
-      throw new Error('InvocationExpression requires at least two children');
+      throw new Error("InvocationExpression requires at least two children");
     }
-    
+
     // The first child is the base expression
     const base = this.transpileNode(node.children[0], context);
-    
+
     // The second child is the member being accessed
     const member = node.children[1];
-    
+
     // Handle different types of invocations
-    if (member.type === 'MemberInvocation') {
+    if (member.type === "MemberInvocation") {
       // This is a property access like 'name.family'
       const memberName = this.extractMemberName(member);
-      
+
       // Create JSON path access
-      if (base.includes('JSON_VALUE')) {
+      if (base.includes("JSON_VALUE")) {
         // Extend existing JSON path
-        const pathMatch = RegExp(/JSON_VALUE\(([^,]+),\s*'([^']+)'\)/).exec(base);
+        const pathMatch = RegExp(/JSON_VALUE\(([^,]+),\s*'([^']+)'\)/).exec(
+          base,
+        );
         if (pathMatch) {
           const source = pathMatch[1];
           const existingPath = pathMatch[2];
-          
+
           // Special handling for FHIR array fields + property access
-          const knownArrayFields = ['name', 'telecom', 'address', 'identifier', 'extension', 'contact'];
-          const pathParts = existingPath.split('.');
-          if (pathParts.length >= 2 && knownArrayFields.includes(pathParts[1]) && !existingPath.includes('[')) {
+          const knownArrayFields = [
+            "name",
+            "telecom",
+            "address",
+            "identifier",
+            "extension",
+            "contact",
+          ];
+          const pathParts = existingPath.split(".");
+          if (
+            pathParts.length >= 2 &&
+            knownArrayFields.includes(pathParts[1]) &&
+            !existingPath.includes("[")
+          ) {
             // Convert $.name.family to $.name[0].family
             const newPath = `${pathParts[0]}.${pathParts[1]}[0].${memberName}`;
             return `JSON_VALUE(${source}, '${newPath}')`;
@@ -504,18 +581,18 @@ export class FHIRPathTranspiler {
           }
         }
       }
-      
+
       return `JSON_VALUE(${base}, '$.${memberName}')`;
-    } else if (member.type === 'FunctionInvocation') {
+    } else if (member.type === "FunctionInvocation") {
       // This is a function call like 'family.first()'
       const newContext: TranspilerContext = {
         ...context,
-        iterationContext: base
+        iterationContext: base,
       };
-      
+
       return this.transpileFunction(member, newContext);
     }
-    
+
     throw new Error(`Unsupported invocation member type: ${member.type}`);
   }
 
@@ -527,12 +604,14 @@ export class FHIRPathTranspiler {
       const identifier = memberNode.children[0];
       return this.extractIdentifierName(identifier);
     }
-    
+
     if (memberNode.text) {
       return memberNode.text;
     }
-    
-    throw new Error(`Could not extract member name from node: ${JSON.stringify(memberNode)}`);
+
+    throw new Error(
+      `Could not extract member name from node: ${JSON.stringify(memberNode)}`,
+    );
   }
 
   /**
@@ -546,45 +625,50 @@ export class FHIRPathTranspiler {
     } else if (node.terminalNodeText && node.terminalNodeText.length > 0) {
       return node.terminalNodeText[0];
     } else {
-      throw new Error(`Could not extract identifier from node: ${JSON.stringify(node)}`);
+      throw new Error(
+        `Could not extract identifier from node: ${JSON.stringify(node)}`,
+      );
     }
   }
 
   /**
    * Transpile binary expressions (operators).
    */
-  private static transpileBinaryExpression(node: any, context: TranspilerContext): string {
+  private static transpileBinaryExpression(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     const left = this.transpileNode(node.left, context);
     const right = this.transpileNode(node.right, context);
-    
+
     switch (node.operator) {
-      case '=':
+      case "=":
         return `(${left} = ${right})`;
-      case '!=':
+      case "!=":
         return `(${left} != ${right})`;
-      case '<':
+      case "<":
         return `(${left} < ${right})`;
-      case '<=':
+      case "<=":
         return `(${left} <= ${right})`;
-      case '>':
+      case ">":
         return `(${left} > ${right})`;
-      case '>=':
+      case ">=":
         return `(${left} >= ${right})`;
-      case 'and':
+      case "and":
         return `(${left} AND ${right})`;
-      case 'or':
+      case "or":
         return `(${left} OR ${right})`;
-      case '+':
+      case "+":
         return `(${left} + ${right})`;
-      case '-':
+      case "-":
         return `(${left} - ${right})`;
-      case '*':
+      case "*":
         return `(${left} * ${right})`;
-      case '/':
+      case "/":
         return `(${left} / ${right})`;
-      case 'div':
+      case "div":
         return `(${left} / ${right})`;
-      case 'mod':
+      case "mod":
         return `(${left} % ${right})`;
       default:
         throw new Error(`Unsupported binary operator: ${node.operator}`);
@@ -594,15 +678,18 @@ export class FHIRPathTranspiler {
   /**
    * Transpile unary expressions.
    */
-  private static transpileUnaryExpression(node: any, context: TranspilerContext): string {
+  private static transpileUnaryExpression(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     const operand = this.transpileNode(node.operand, context);
-    
+
     switch (node.operator) {
-      case 'not':
+      case "not":
         return `(NOT ${operand})`;
-      case '-':
+      case "-":
         return `(-${operand})`;
-      case '+':
+      case "+":
         return `(+${operand})`;
       default:
         throw new Error(`Unsupported unary operator: ${node.operator}`);
@@ -613,14 +700,14 @@ export class FHIRPathTranspiler {
    * Format a constant value for SQL.
    */
   private static formatConstantValue(value: any): string {
-    if (typeof value === 'string') {
+    if (typeof value === "string") {
       return `'${value.replace(/'/g, "''")}'`;
-    } else if (typeof value === 'number') {
+    } else if (typeof value === "number") {
       return value.toString();
-    } else if (typeof value === 'boolean') {
-      return value ? '1' : '0';
+    } else if (typeof value === "boolean") {
+      return value ? "1" : "0";
     } else if (value === null || value === undefined) {
-      return 'NULL';
+      return "NULL";
     } else {
       return `'${JSON.stringify(value).replace(/'/g, "''")}'`;
     }
@@ -629,76 +716,91 @@ export class FHIRPathTranspiler {
   /**
    * Transpile AND expressions.
    */
-  private static transpileAndExpression(node: any, context: TranspilerContext): string {
+  private static transpileAndExpression(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     if (!node.children || node.children.length < 2) {
-      throw new Error('AndExpression requires at least two operands');
+      throw new Error("AndExpression requires at least two operands");
     }
-    
+
     const left = this.transpileNode(node.children[0], context);
     const right = this.transpileNode(node.children[1], context);
-    
+
     return `(${left} AND ${right})`;
   }
 
   /**
    * Transpile OR expressions.
    */
-  private static transpileOrExpression(node: any, context: TranspilerContext): string {
+  private static transpileOrExpression(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     if (!node.children || node.children.length < 2) {
-      throw new Error('OrExpression requires at least two operands');
+      throw new Error("OrExpression requires at least two operands");
     }
-    
+
     const left = this.transpileNode(node.children[0], context);
     const right = this.transpileNode(node.children[1], context);
-    
+
     return `(${left} OR ${right})`;
   }
 
   /**
    * Transpile equality expressions.
    */
-  private static transpileEqualityExpression(node: any, context: TranspilerContext): string {
+  private static transpileEqualityExpression(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     if (!node.children || node.children.length < 2) {
-      throw new Error('EqualityExpression requires at least two operands');
+      throw new Error("EqualityExpression requires at least two operands");
     }
-    
+
     const left = this.transpileNode(node.children[0], context);
     const right = this.transpileNode(node.children[1], context);
-    
+
     // Handle boolean comparisons specially
-    if (right === '1' || right === '0') {
+    if (right === "1" || right === "0") {
       // Right side is a boolean literal, ensure left side is compared as boolean
       return `(CAST(${left} AS BIT) = ${right})`;
-    } else if (left === '1' || left === '0') {
-      // Left side is a boolean literal, ensure right side is compared as boolean  
+    } else if (left === "1" || left === "0") {
+      // Left side is a boolean literal, ensure right side is compared as boolean
       return `(${left} = CAST(${right} AS BIT))`;
     }
-    
+
     return `(${left} = ${right})`;
   }
 
   /**
    * Transpile inequality expressions.
    */
-  private static transpileInequalityExpression(node: any, context: TranspilerContext): string {
+  private static transpileInequalityExpression(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     if (!node.children || node.children.length < 2) {
-      throw new Error('InequalityExpression requires at least two operands');
+      throw new Error("InequalityExpression requires at least two operands");
     }
-    
+
     const left = this.transpileNode(node.children[0], context);
     const right = this.transpileNode(node.children[1], context);
-    
+
     return `(${left} != ${right})`;
   }
 
   /**
    * Transpile term expressions.
    */
-  private static transpileTermExpression(node: any, context: TranspilerContext): string {
+  private static transpileTermExpression(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     if (!node.children || node.children.length === 0) {
-      throw new Error('TermExpression requires at least one child');
+      throw new Error("TermExpression requires at least one child");
     }
-    
+
     // TermExpression typically wraps another expression
     return this.transpileNode(node.children[0], context);
   }
@@ -706,11 +808,14 @@ export class FHIRPathTranspiler {
   /**
    * Transpile invocation terms.
    */
-  private static transpileInvocationTerm(node: any, context: TranspilerContext): string {
+  private static transpileInvocationTerm(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     if (!node.children || node.children.length === 0) {
-      throw new Error('InvocationTerm requires at least one child');
+      throw new Error("InvocationTerm requires at least one child");
     }
-    
+
     // InvocationTerm typically wraps another expression
     return this.transpileNode(node.children[0], context);
   }
@@ -718,11 +823,14 @@ export class FHIRPathTranspiler {
   /**
    * Transpile literal terms.
    */
-  private static transpileLiteralTerm(node: any, context: TranspilerContext): string {
+  private static transpileLiteralTerm(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     if (!node.children || node.children.length === 0) {
-      throw new Error('LiteralTerm requires at least one child');
+      throw new Error("LiteralTerm requires at least one child");
     }
-    
+
     // LiteralTerm typically wraps another expression
     return this.transpileNode(node.children[0], context);
   }
@@ -730,11 +838,14 @@ export class FHIRPathTranspiler {
   /**
    * Transpile member invocations (property access).
    */
-  private static transpileMemberInvocation(node: any, context: TranspilerContext): string {
+  private static transpileMemberInvocation(
+    node: any,
+    context: TranspilerContext,
+  ): string {
     const memberName = this.extractMemberName(node);
-    
+
     // Handle special identifiers
-    if (memberName === 'id') {
+    if (memberName === "id") {
       return `${context.resourceAlias}.id`;
     }
 
@@ -751,44 +862,44 @@ export class FHIRPathTranspiler {
    */
   static inferSqlType(fhirType?: string): string {
     switch (fhirType?.toLowerCase()) {
-      case 'id':
-      case 'string':
-      case 'markdown':
-      case 'code':
-      case 'uri':
-      case 'url':
-      case 'canonical':
-      case 'uuid':
-      case 'oid':
-        return 'NVARCHAR(MAX)';
-      
-      case 'boolean':
-        return 'BIT';
-      
-      case 'integer':
-      case 'positiveint':
-      case 'unsignedint':
-        return 'INT';
-      
-      case 'integer64':
-        return 'BIGINT';
-      
-      case 'decimal':
-        return 'DECIMAL(18,6)';
-      
-      case 'date':
-      case 'datetime':
-      case 'instant':
-        return 'DATETIME2';
-      
-      case 'time':
-        return 'TIME';
-      
-      case 'base64binary':
-        return 'VARBINARY(MAX)';
-      
+      case "id":
+      case "string":
+      case "markdown":
+      case "code":
+      case "uri":
+      case "url":
+      case "canonical":
+      case "uuid":
+      case "oid":
+        return "NVARCHAR(MAX)";
+
+      case "boolean":
+        return "BIT";
+
+      case "integer":
+      case "positiveint":
+      case "unsignedint":
+        return "INT";
+
+      case "integer64":
+        return "BIGINT";
+
+      case "decimal":
+        return "DECIMAL(18,6)";
+
+      case "date":
+      case "datetime":
+      case "instant":
+        return "DATETIME2";
+
+      case "time":
+        return "TIME";
+
+      case "base64binary":
+        return "VARBINARY(MAX)";
+
       default:
-        return 'NVARCHAR(MAX)';
+        return "NVARCHAR(MAX)";
     }
   }
 }
