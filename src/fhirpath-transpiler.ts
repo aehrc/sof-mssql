@@ -137,129 +137,214 @@ export class FHIRPathTranspiler {
    * Transpile function invocations.
    */
   private static transpileFunction(node: any, context: TranspilerContext): string {
-    // Extract function name from the node structure
-    let functionName: string;
+    const functionName = this.extractFunctionName(node);
+    const args = node.params ?? [];
+
+    return this.executeFunctionHandler(functionName, args, context);
+  }
+
+  /**
+   * Extract function name from the node structure.
+   */
+  private static extractFunctionName(node: any): string {
     if (node.name) {
-      functionName = node.name;
-    } else if (node.children && node.children.length > 0) {
-      // Look for the function name in the structure
+      return node.name;
+    }
+    
+    if (node.children && node.children.length > 0) {
       const funcNode = node.children[0];
       if (funcNode.type === 'Functn') {
-        // Navigate to the Identifier within the Functn node
         if (funcNode.children && funcNode.children.length > 0) {
           const identifierNode = funcNode.children[0];
-          functionName = this.extractIdentifierName(identifierNode);
+          return this.extractIdentifierName(identifierNode);
         } else {
           throw new Error(`Could not find function identifier in Functn node: ${JSON.stringify(funcNode)}`);
         }
       } else {
-        functionName = this.extractIdentifierName(funcNode);
+        return this.extractIdentifierName(funcNode);
       }
-    } else {
-      throw new Error(`Could not extract function name from node: ${JSON.stringify(node)}`);
     }
     
-    const args = node.params ?? [];
+    throw new Error(`Could not extract function name from node: ${JSON.stringify(node)}`);
+  }
 
+  /**
+   * Execute the appropriate function handler based on function name.
+   */
+  private static executeFunctionHandler(functionName: string, args: any[], context: TranspilerContext): string {
     switch (functionName) {
       case 'exists':
-        if (args.length === 0) {
-          // exists() on current context
-          return `(${context.resourceAlias}.json IS NOT NULL)`;
-        } else {
-          // exists(path)
-          const pathExpr = this.transpileNode(args[0], context);
-          return `(${pathExpr} IS NOT NULL)`;
-        }
-
+        return this.handleExistsFunction(args, context);
       case 'empty':
-        if (args.length === 0) {
-          return `(${context.resourceAlias}.json IS NULL)`;
-        } else {
-          const pathExpr = this.transpileNode(args[0], context);
-          return `(${pathExpr} IS NULL)`;
-        }
-
+        return this.handleEmptyFunction(args, context);
       case 'first':
-        if (args.length === 0) {
-          // Apply first() to the current context
-          if (context.iterationContext) {
-            // If the context contains JSON_VALUE with a path like '$.name.family', 
-            // convert it to get the first element: '$.name[0].family'
-            if (context.iterationContext.includes('JSON_VALUE')) {
-              const pathMatch = RegExp(/JSON_VALUE\(([^,]+),\s*'([^']+)'\)/).exec(context.iterationContext);
-              if (pathMatch) {
-                const source = pathMatch[1];
-                const path = pathMatch[2];
-                
-                // Only modify if [0] is not already present
-                if (!path.includes('[0]')) {
-                  // Split the path and find where to insert [0]
-                  const pathParts = path.split('.');
-                  if (pathParts.length >= 2) {
-                    // Insert [0] after the first array element (e.g., $.name.family -> $.name[0].family)
-                    const newPath = `${pathParts[0]}.${pathParts[1]}[0]${pathParts.length > 2 ? '.' + pathParts.slice(2).join('.') : ''}`;
-                    return `JSON_VALUE(${source}, '${newPath}')`;
-                  }
-                } else {
-                  // [0] already present, just return as is
-                  return `JSON_VALUE(${source}, '${path}')`;
-                }
-              }
-            }
-            return `JSON_VALUE(${context.iterationContext}, '$[0]')`;
-          } else {
-            return `${context.resourceAlias}.json`;
-          }
-        } else {
-          const pathExpr = this.transpileNode(args[0], context);
-          return `JSON_VALUE(${pathExpr}, '$[0]')`;
-        }
-
-      case 'last': {
-        const pathExpr = args.length > 0 ?
-            this.transpileNode(args[0], context) :
-            (context.iterationContext ?? `${context.resourceAlias}.json`);
-        return `JSON_VALUE(${pathExpr}, '$[last]')`;
-      }
-
-      case 'count': {
-        const countPath = args.length > 0 ?
-            this.transpileNode(args[0], context) :
-            (context.iterationContext ?? `${context.resourceAlias}.json`);
-        return `JSON_ARRAY_LENGTH(${countPath})`;
-      }
-
-      case 'join': {
-        if (args.length !== 1) {
-          throw new Error('join() function requires exactly one argument');
-        }
-        const separator = this.transpileNode(args[0], context);
-        return `STRING_AGG(JSON_VALUE(value, '$'), ${separator})`;
-      }
-
-      case 'where': {
-        if (args.length !== 1) {
-          throw new Error('where() function requires exactly one argument');
-        }
-        // This is complex and would typically require CROSS APPLY with JSON array
-        const whereCondition = this.transpileNode(args[0], context);
-        return `CROSS APPLY OPENJSON(${context.resourceAlias}.json) WHERE ${whereCondition}`;
-      }
-
-      case 'select': {
-        if (args.length !== 1) {
-          throw new Error('select() function requires exactly one argument');
-        }
-        return this.transpileNode(args[0], context);
-      }
-
+        return this.handleFirstFunction(args, context);
+      case 'last':
+        return this.handleLastFunction(args, context);
+      case 'count':
+        return this.handleCountFunction(args, context);
+      case 'join':
+        return this.handleJoinFunction(args, context);
+      case 'where':
+        return this.handleWhereFunction(args, context);
+      case 'select':
+        return this.handleSelectFunction(args, context);
       case 'getResourceKey':
-        return `${context.resourceAlias}.id`;
-
+        return this.handleGetResourceKeyFunction(context);
       default:
         throw new Error(`Unsupported FHIRPath function: ${functionName}`);
     }
+  }
+
+  /**
+   * Handle exists() function.
+   */
+  private static handleExistsFunction(args: any[], context: TranspilerContext): string {
+    if (args.length === 0) {
+      return `(${context.resourceAlias}.json IS NOT NULL)`;
+    } else {
+      const pathExpr = this.transpileNode(args[0], context);
+      return `(${pathExpr} IS NOT NULL)`;
+    }
+  }
+
+  /**
+   * Handle empty() function.
+   */
+  private static handleEmptyFunction(args: any[], context: TranspilerContext): string {
+    if (args.length === 0) {
+      return `(${context.resourceAlias}.json IS NULL)`;
+    } else {
+      const pathExpr = this.transpileNode(args[0], context);
+      return `(${pathExpr} IS NULL)`;
+    }
+  }
+
+  /**
+   * Handle first() function.
+   */
+  private static handleFirstFunction(args: any[], context: TranspilerContext): string {
+    if (args.length === 0) {
+      return this.handleFirstWithoutArgs(context);
+    } else {
+      const pathExpr = this.transpileNode(args[0], context);
+      return `JSON_VALUE(${pathExpr}, '$[0]')`;
+    }
+  }
+
+  /**
+   * Handle first() function without arguments.
+   */
+  private static handleFirstWithoutArgs(context: TranspilerContext): string {
+    if (context.iterationContext) {
+      return this.handleFirstWithIterationContext(context);
+    } else {
+      return `${context.resourceAlias}.json`;
+    }
+  }
+
+  /**
+   * Handle first() function when iteration context is available.
+   */
+  private static handleFirstWithIterationContext(context: TranspilerContext): string {
+    if (context.iterationContext!.includes('JSON_VALUE')) {
+      return this.handleFirstWithJsonValue(context);
+    }
+    return `JSON_VALUE(${context.iterationContext}, '$[0]')`;
+  }
+
+  /**
+   * Handle first() function when iteration context contains JSON_VALUE.
+   */
+  private static handleFirstWithJsonValue(context: TranspilerContext): string {
+    const pathMatch = RegExp(/JSON_VALUE\(([^,]+),\s*'([^']+)'\)/).exec(context.iterationContext!);
+    if (pathMatch) {
+      return this.processJsonValueMatch(pathMatch[1], pathMatch[2]);
+    }
+    return `JSON_VALUE(${context.iterationContext}, '$[0]')`;
+  }
+
+  /**
+   * Process a matched JSON_VALUE expression for first() function.
+   */
+  private static processJsonValueMatch(source: string, path: string): string {
+    if (!path.includes('[0]')) {
+      return this.addArrayIndexToPath(source, path);
+    } else {
+      return `JSON_VALUE(${source}, '${path}')`;
+    }
+  }
+
+  /**
+   * Add array index [0] to a JSON path if needed.
+   */
+  private static addArrayIndexToPath(source: string, path: string): string {
+    const pathParts = path.split('.');
+    if (pathParts.length >= 2) {
+      const remainingPath = pathParts.length > 2 ? '.' + pathParts.slice(2).join('.') : '';
+      const newPath = `${pathParts[0]}.${pathParts[1]}[0]${remainingPath}`;
+      return `JSON_VALUE(${source}, '${newPath}')`;
+    }
+    return `JSON_VALUE(${source}, '${path}')`;
+  }
+
+  /**
+   * Handle last() function.
+   */
+  private static handleLastFunction(args: any[], context: TranspilerContext): string {
+    const pathExpr = args.length > 0 ?
+        this.transpileNode(args[0], context) :
+        (context.iterationContext ?? `${context.resourceAlias}.json`);
+    return `JSON_VALUE(${pathExpr}, '$[last]')`;
+  }
+
+  /**
+   * Handle count() function.
+   */
+  private static handleCountFunction(args: any[], context: TranspilerContext): string {
+    const countPath = args.length > 0 ?
+        this.transpileNode(args[0], context) :
+        (context.iterationContext ?? `${context.resourceAlias}.json`);
+    return `JSON_ARRAY_LENGTH(${countPath})`;
+  }
+
+  /**
+   * Handle join() function.
+   */
+  private static handleJoinFunction(args: any[], context: TranspilerContext): string {
+    if (args.length !== 1) {
+      throw new Error('join() function requires exactly one argument');
+    }
+    const separator = this.transpileNode(args[0], context);
+    return `STRING_AGG(JSON_VALUE(value, '$'), ${separator})`;
+  }
+
+  /**
+   * Handle where() function.
+   */
+  private static handleWhereFunction(args: any[], context: TranspilerContext): string {
+    if (args.length !== 1) {
+      throw new Error('where() function requires exactly one argument');
+    }
+    const whereCondition = this.transpileNode(args[0], context);
+    return `CROSS APPLY OPENJSON(${context.resourceAlias}.json) WHERE ${whereCondition}`;
+  }
+
+  /**
+   * Handle select() function.
+   */
+  private static handleSelectFunction(args: any[], context: TranspilerContext): string {
+    if (args.length !== 1) {
+      throw new Error('select() function requires exactly one argument');
+    }
+    return this.transpileNode(args[0], context);
+  }
+
+  /**
+   * Handle getResourceKey() function.
+   */
+  private static handleGetResourceKeyFunction(context: TranspilerContext): string {
+    return `${context.resourceAlias}.id`;
   }
 
   /**
