@@ -12,7 +12,13 @@
       "Bash(npm run build:*)",
       "Bash(npm install)",
       "Bash(npm install:*)",
-      "Bash(npm ls:*)"
+      "Bash(npm ls:*)",
+      "Bash(npm start:*)",
+      "Bash(node:*)",
+      "Bash(grep:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm run:*)"
     ],
     "deny": []
   }

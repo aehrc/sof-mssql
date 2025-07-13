@@ -172,7 +172,18 @@ export class QueryGenerator {
     for (const where of whereConditions) {
       try {
         const condition = FHIRPathTranspiler.transpile(where.path, context);
-        conditions.push(condition);
+        
+        // Check if this looks like a simple boolean field reference that needs to be cast
+        // Only apply this to simple field references, not complex expressions
+        const booleanFields = ['active', 'deceased', 'multipleBirth'];
+        const simpleBooleanFieldPattern = new RegExp(`^JSON_VALUE\\([^,]+,\\s*'\\$\\.(${booleanFields.join('|')})'\\)$`);
+        
+        if (simpleBooleanFieldPattern.test(condition.trim())) {
+          // Convert JSON_VALUE result to boolean: CAST(JSON_VALUE(...) as BIT) = 1
+          conditions.push(`(CAST(${condition} AS BIT) = 1)`);
+        } else {
+          conditions.push(condition);
+        }
       } catch (error) {
         throw new Error(`Failed to transpile where condition '${where.path}': ${error}`);
       }
