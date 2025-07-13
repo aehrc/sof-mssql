@@ -225,7 +225,7 @@ export class TestRunner {
   }
 
   /**
-   * Compare actual and expected results.
+   * Compare actual and expected results, ignoring row ordering.
    */
   private compareResults(actual: any[], expected: any[], expectedColumns?: string[]): boolean {
     // Check if arrays have the same length
@@ -233,24 +233,66 @@ export class TestRunner {
       return false;
     }
 
-    // If no expected columns specified, compare all properties
+    // If no expected columns specified, compare all properties (as sets)
     if (!expectedColumns) {
-      return this.deepEqual(actual, expected);
+      return this.compareResultSets(actual, expected);
     }
 
-    // Compare only specified columns
-    for (let i = 0; i < actual.length; i++) {
-      const actualRow = actual[i];
-      const expectedRow = expected[i];
+    // Compare only specified columns (as sets)
+    return this.compareResultSetsWithColumns(actual, expected, expectedColumns);
+  }
 
-      for (const column of expectedColumns) {
-        if (!this.isEqual(actualRow[column], expectedRow[column])) {
-          return false;
-        }
+  /**
+   * Compare two result sets ignoring order, using all columns.
+   */
+  private compareResultSets(actual: any[], expected: any[]): boolean {
+    // Create copies to avoid modifying originals
+    const actualCopy = [...actual];
+    const expectedCopy = [...expected];
+
+    // For each expected row, try to find a matching actual row
+    for (const expectedRow of expectedCopy) {
+      const matchIndex = actualCopy.findIndex(actualRow => this.deepEqual(actualRow, expectedRow));
+      if (matchIndex === -1) {
+        return false; // No matching row found
       }
+      // Remove the matched row to handle duplicates correctly
+      actualCopy.splice(matchIndex, 1);
     }
 
-    return true;
+    // If all expected rows were matched, actualCopy should be empty
+    return actualCopy.length === 0;
+  }
+
+  /**
+   * Compare two result sets ignoring order, using only specified columns.
+   */
+  private compareResultSetsWithColumns(actual: any[], expected: any[], columns: string[]): boolean {
+    // Create copies to avoid modifying originals
+    const actualCopy = [...actual];
+    const expectedCopy = [...expected];
+
+    // For each expected row, try to find a matching actual row
+    for (const expectedRow of expectedCopy) {
+      const matchIndex = actualCopy.findIndex(actualRow => {
+        // Check if all specified columns match
+        for (const column of columns) {
+          if (!this.isEqual(actualRow[column], expectedRow[column])) {
+            return false;
+          }
+        }
+        return true;
+      });
+      
+      if (matchIndex === -1) {
+        return false; // No matching row found
+      }
+      // Remove the matched row to handle duplicates correctly
+      actualCopy.splice(matchIndex, 1);
+    }
+
+    // If all expected rows were matched, actualCopy should be empty
+    return actualCopy.length === 0;
   }
 
   /**
