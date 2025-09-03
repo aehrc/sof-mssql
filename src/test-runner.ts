@@ -112,8 +112,10 @@ export interface TestReport {
  * The test runner automatically creates a table with the following structure:
  * ```sql
  * CREATE TABLE [schema].[table_name] (
- *   [id_column] NVARCHAR(64) NOT NULL PRIMARY KEY,
- *   [json_column] NVARCHAR(MAX) NOT NULL
+ *   [id_column] NVARCHAR(64) NOT NULL,
+ *   [resource_type] NVARCHAR(64) NOT NULL,
+ *   [json_column] NVARCHAR(MAX) NOT NULL,
+ *   PRIMARY KEY ([id_column], [resource_type])
  * )
  * ```
  *
@@ -516,8 +518,10 @@ export class TestRunner {
       console.log(`Creating table ${tableName}...`);
       const createTableSql = `
         CREATE TABLE ${tableName} (
-          [${this.config.resourceIdColumn}] NVARCHAR(64) NOT NULL PRIMARY KEY,
-          [${this.config.resourceJsonColumn}] NVARCHAR(MAX) NOT NULL
+          [${this.config.resourceIdColumn}] NVARCHAR(64) NOT NULL,
+          [resource_type] NVARCHAR(64) NOT NULL,
+          [${this.config.resourceJsonColumn}] NVARCHAR(MAX) NOT NULL,
+          PRIMARY KEY ([${this.config.resourceIdColumn}], [resource_type])
         )
       `;
 
@@ -553,12 +557,13 @@ export class TestRunner {
       try {
         const insertSql = `
           INSERT INTO [${this.config.schemaName}].[${this.config.tableName}] 
-          ([${this.config.resourceIdColumn}], [${this.config.resourceJsonColumn}])
-          VALUES (@id, @json)
+          ([${this.config.resourceIdColumn}], [resource_type], [${this.config.resourceJsonColumn}])
+          VALUES (@id, @resource_type, @json)
         `;
 
         const insertRequest = new Request(this.pool);
         insertRequest.input("id", resource.id);
+        insertRequest.input("resource_type", resource.resourceType);
         insertRequest.input("json", JSON.stringify(resource));
 
         await insertRequest.query(insertSql);

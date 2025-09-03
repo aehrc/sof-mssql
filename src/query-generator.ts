@@ -422,7 +422,7 @@ export class QueryGenerator {
     let fromClause = `FROM ${tableName} AS [${context.resourceAlias}]`;
 
     // Add resource type filter
-    const resourceTypeCondition = `JSON_VALUE([${context.resourceAlias}].[${this.options.resourceJsonColumn}], '$.resourceType') = '${viewDef.resource}'`;
+    const resourceTypeCondition = `[${context.resourceAlias}].[resource_type] = '${viewDef.resource}'`;
     fromClause += `\nWHERE ${resourceTypeCondition}`;
 
     return fromClause;

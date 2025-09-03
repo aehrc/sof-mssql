@@ -81,14 +81,18 @@ This library assumes FHIR data is stored in a table with the following structure
 
 ```sql
 CREATE TABLE [dbo].[fhir_resources] (
-  [id] NVARCHAR(64) NOT NULL PRIMARY KEY,
-  [json] NVARCHAR(MAX) NOT NULL
+  [id] NVARCHAR(64) NOT NULL,
+  [resource_type] NVARCHAR(64) NOT NULL,
+  [json] NVARCHAR(MAX) NOT NULL,
+  PRIMARY KEY ([id], [resource_type])
 );
 ```
 
 Where:
 - `id` contains the FHIR resource ID
+- `resource_type` contains the FHIR resource type (e.g., 'Patient', 'Observation')
 - `json` contains the complete FHIR resource as JSON
+- The primary key combines both `id` and `resource_type`, allowing resources with the same ID but different types
 
 You can customise the table and column names using the configuration options.
 
@@ -459,8 +463,10 @@ GRANT INSERT, SELECT, DELETE ON SCHEMA::dbo TO [testuser];
 The test runner creates tables with this structure:
 ```sql
 CREATE TABLE [dbo].[fhir_resources] (
-  [id] NVARCHAR(64) NOT NULL PRIMARY KEY,
-  [json] NVARCHAR(MAX) NOT NULL
+  [id] NVARCHAR(64) NOT NULL,
+  [resource_type] NVARCHAR(64) NOT NULL,
+  [json] NVARCHAR(MAX) NOT NULL,
+  PRIMARY KEY ([id], [resource_type])
 );
 ```
 
