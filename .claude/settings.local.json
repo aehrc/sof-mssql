@@ -26,7 +26,8 @@
       "Bash(npx tsc:*)",
       "Bash(npm test)",
       "Bash(npm uninstall:*)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": []
   }

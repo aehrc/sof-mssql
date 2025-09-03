@@ -235,21 +235,239 @@ The transpiler supports a subset of FHIRPath expressions commonly used in ViewDe
 
 ## Testing
 
-The library includes a comprehensive test runner that can execute test suites from the [sql-on-fhir-v2](https://github.com/FHIR/sql-on-fhir-v2) repository:
+The library includes a comprehensive test runner that can execute test suites from the [sql-on-fhir-v2](https://github.com/FHIR/sql-on-fhir-v2) repository.
 
+### Prerequisites
+
+Before running tests, you need:
+
+1. **SQL Server Instance**: A running SQL Server instance (2019 or later recommended)
+2. **Database**: A database where the test runner can create tables and insert test data
+3. **Permissions**: The database user must have permissions to:
+   - Create and drop tables in the target database
+   - Insert, update, and delete data
+   - Execute queries
+
+### Database Setup
+
+1. **Create a test database**:
+   ```sql
+   CREATE DATABASE testdb;
+   ```
+
+2. **Verify schema exists** (usually `dbo` exists by default):
+   ```sql
+   USE testdb;
+   SELECT * FROM sys.schemas WHERE name = 'dbo';
+   ```
+
+3. **Test connection with sqlcmd**:
+   ```bash
+   sqlcmd -S localhost -d testdb -U sa -P password -Q "SELECT DB_NAME()"
+   ```
+
+### Running Tests
+
+The test runner automatically:
+- Creates the required FHIR resources table: `[dbo].[fhir_resources]`
+- Inserts test data from the test suite
+- Executes ViewDefinition queries and compares results
+- Cleans up test data after each test suite
+
+#### Using Environment Variables (Recommended for CI/CD)
 ```bash
-# Run tests against a SQL Server instance
+# Set environment variables
+export MSSQL_HOST=localhost
+export MSSQL_DATABASE=testdb
+export MSSQL_USER=sa
+export MSSQL_PASSWORD=password
+
+# Run tests - configuration comes from environment
+sof-mssql test basic.json
+sof-mssql test ./tests
+```
+
+#### Using CLI Options
+```bash
+# Single test file
 sof-mssql test basic.json \\
   --host localhost \\
   --database testdb \\
   --user sa \\
   --password password
+
+# Directory of test files
+sof-mssql test ./tests \\
+  --host 152.83.96.174 \\
+  --port 1433 \\
+  --database testdb \\
+  --user sa \\
+  --password password
 ```
 
-Test results will show:
-- ✅ Passed tests
-- ❌ Failed tests with expected vs actual results
-- Generated SQL queries for debugging
+#### Using Connection String
+```bash
+# Via environment variable
+export MSSQL_CONNECTION_STRING="Server=localhost;Database=testdb;User Id=sa;Password=password;TrustServerCertificate=true;"
+sof-mssql test basic.json
+
+# Via CLI option
+sof-mssql test basic.json \\
+  --connection "Server=localhost;Database=testdb;User Id=sa;Password=password;TrustServerCertificate=true;"
+```
+
+### Configuration Options
+
+Configuration follows this precedence order:
+1. **CLI options** (highest priority)
+2. **Environment variables** 
+3. **Default values** (lowest priority)
+
+| CLI Option | Environment Variable | Description | Default |
+|------------|---------------------|-------------|---------|
+| `--connection` | `MSSQL_CONNECTION_STRING` | Full connection string | - |
+| `--host` | `MSSQL_HOST` | SQL Server hostname | `localhost` |
+| `--port` | `MSSQL_PORT` | SQL Server port | `1433` |
+| `--database` | `MSSQL_DATABASE` | Target database name | `test` |
+| `--user` | `MSSQL_USER` | Database username | - |
+| `--password` | `MSSQL_PASSWORD` | Database password | - |
+| `--table` | `MSSQL_TABLE` | FHIR resources table name | `fhir_resources` |
+| `--schema` | `MSSQL_SCHEMA` | Database schema | `dbo` |
+| `--encrypt` | `MSSQL_ENCRYPT` | Enable encryption | `true` |
+| `--trust-cert` | `MSSQL_TRUST_CERT` | Trust server certificate | `true` |
+
+### Test Results
+
+Test results show:
+- ✅ **Passed tests**: Tests that produced expected results
+- ❌ **Failed tests**: Tests with mismatched results, showing:
+  - Expected vs actual results
+  - Generated SQL queries for debugging
+  - Error messages if query execution failed
+
+### Test Report Generation
+
+The test runner can generate machine-readable test reports:
+
+```typescript
+import { TestRunner } from 'sql-on-fhir-mssql';
+
+// Configuration from environment variables
+const config = {
+  server: process.env.MSSQL_HOST || 'localhost',
+  database: process.env.MSSQL_DATABASE || 'test',
+  user: process.env.MSSQL_USER,
+  password: process.env.MSSQL_PASSWORD,
+};
+
+// Run tests and generate report
+const results = await TestRunner.runTestSuitesFromDirectory('./tests', config);
+const report = TestRunner.generateDirectoryTestReport(results);
+await TestRunner.writeTestReport(report, 'test-report.json');
+```
+
+### CI/CD Integration
+
+#### GitHub Actions
+```yaml
+name: SQL on FHIR Tests
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2019-latest
+        env:
+          SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
+          ACCEPT_EULA: Y
+        options: >-
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P $SA_PASSWORD -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    - run: npm install
+    - name: Setup database
+      run: |
+        sqlcmd -S localhost -U sa -P ${{ secrets.SA_PASSWORD }} -Q "CREATE DATABASE testdb"
+      env:
+        MSSQL_HOST: localhost
+        MSSQL_DATABASE: testdb
+        MSSQL_USER: sa
+        MSSQL_PASSWORD: ${{ secrets.SA_PASSWORD }}
+    - name: Run tests
+      run: npx tsx src/cli.ts test ./sqlonfhir/tests
+      env:
+        MSSQL_HOST: localhost
+        MSSQL_DATABASE: testdb
+        MSSQL_USER: sa
+        MSSQL_PASSWORD: ${{ secrets.SA_PASSWORD }}
+```
+
+#### Azure DevOps
+```yaml
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  MSSQL_HOST: localhost
+  MSSQL_DATABASE: testdb
+  MSSQL_USER: sa
+
+steps:
+- task: NodeTool@0
+  inputs:
+    versionSpec: '18.x'
+- script: npm install
+- script: |
+    docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=$(SA_PASSWORD)" -p 1433:1433 -d mcr.microsoft.com/mssql/server:2019-latest
+    sleep 30
+    sqlcmd -S localhost -U sa -P "$(SA_PASSWORD)" -Q "CREATE DATABASE testdb"
+  displayName: 'Start SQL Server and create database'
+- script: npx tsx src/cli.ts test ./sqlonfhir/tests
+  env:
+    MSSQL_PASSWORD: $(SA_PASSWORD)
+  displayName: 'Run tests'
+```
+
+### Troubleshooting
+
+#### Connection Issues
+- **SSL errors**: Use `--trust-cert` flag or disable encryption
+- **Authentication**: Verify username/password and SQL Server authentication mode
+- **Network**: Check firewall settings and SQL Server TCP/IP configuration
+
+#### Permission Issues
+```sql
+-- Grant necessary permissions to test user
+USE testdb;
+GRANT CREATE TABLE TO [testuser];
+GRANT INSERT, SELECT, DELETE ON SCHEMA::dbo TO [testuser];
+```
+
+#### Table Creation Issues
+The test runner creates tables with this structure:
+```sql
+CREATE TABLE [dbo].[fhir_resources] (
+  [id] NVARCHAR(64) NOT NULL PRIMARY KEY,
+  [json] NVARCHAR(MAX) NOT NULL
+);
+```
+
+If table creation fails:
+- Verify the schema exists: `SELECT * FROM sys.schemas WHERE name = 'dbo'`
+- Check user permissions: `SELECT HAS_PERMS_BY_NAME('dbo', 'SCHEMA', 'CREATE TABLE')`
+- Review SQL Server error logs for detailed error messages
 
 ## Development
 

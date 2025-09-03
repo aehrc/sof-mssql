@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    environment:
+      - SA_PASSWORD=${SA_PASSWORD:-TestPassword123!}
+      - ACCEPT_EULA=Y
+    ports:
+      - "1433:1433"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P $${SA_PASSWORD} -Q 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - sqldata:/var/opt/mssql
+
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      # SQL Server connection configuration
+      - MSSQL_HOST=sqlserver
+      - MSSQL_PORT=1433
+      - MSSQL_DATABASE=testdb
+      - MSSQL_USER=sa
+      - MSSQL_PASSWORD=${SA_PASSWORD:-TestPassword123!}
+      - MSSQL_ENCRYPT=true
+      - MSSQL_TRUST_CERT=true
+      
+      # Optional table configuration
+      - MSSQL_TABLE=${MSSQL_TABLE:-fhir_resources}
+      - MSSQL_SCHEMA=${MSSQL_SCHEMA:-dbo}
+    volumes:
+      - .:/app
+      - /app/node_modules
+    working_dir: /app
+    command: >
+      sh -c "
+        echo 'Waiting for SQL Server to be ready...' &&
+        sleep 10 &&
+        echo 'Creating test database...' &&
+        sqlcmd -S sqlserver -U sa -P $${MSSQL_PASSWORD} -Q 'CREATE DATABASE testdb' &&
+        echo 'Running tests...' &&
+        npx tsx src/cli.ts test ./sqlonfhir/tests
+      "
+
+volumes:
+  sqldata:

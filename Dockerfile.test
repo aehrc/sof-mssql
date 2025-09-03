@@ -1,0 +1,30 @@
+# Dockerfile for running tests in containerised environment
+FROM node:18-alpine
+
+# Install SQL Server command-line tools
+RUN apk add --no-cache curl
+RUN curl -O https://download.microsoft.com/download/b/9/f/b9f3cce4-3925-46d4-9f46-da08869c6486/msodbcsql18_18.1.1.1-1_amd64.apk && \
+    curl -O https://download.microsoft.com/download/b/9/f/b9f3cce4-3925-46d4-9f46-da08869c6486/mssql-tools18_18.1.1.1-1_amd64.apk && \
+    apk add --allow-untrusted msodbcsql18_18.1.1.1-1_amd64.apk && \
+    apk add --allow-untrusted mssql-tools18_18.1.1.1-1_amd64.apk
+
+# Add SQL Server tools to PATH
+ENV PATH="$PATH:/opt/mssql-tools18/bin"
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy source code
+COPY . .
+
+# Build the project
+RUN npm run build
+
+# Default command (can be overridden)
+CMD ["npx", "tsx", "src/cli.ts", "test", "./sqlonfhir/tests"]

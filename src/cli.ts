@@ -152,32 +152,48 @@ program
     "Test suite file (JSON) or directory containing test files",
   )
   .option("-c, --connection <string>", "SQL Server connection string")
-  .option("--host <host>", "SQL Server host", "localhost")
-  .option("--port <port>", "SQL Server port", "1433")
-  .option("--database <db>", "Database name", "test")
+  .option("--host <host>", "SQL Server host")
+  .option("--port <port>", "SQL Server port")
+  .option("--database <db>", "Database name")
   .option("--user <user>", "Username")
   .option("--password <password>", "Password")
-  .option("-t, --table <name>", "FHIR resources table name", "fhir_resources")
-  .option("-s, --schema <name>", "Database schema name", "dbo")
-  .option("--encrypt", "Enable encryption", true)
-  .option("--trust-cert", "Trust server certificate", true)
+  .option("-t, --table <name>", "FHIR resources table name")
+  .option("-s, --schema <name>", "Database schema name")
+  .option("--encrypt", "Enable encryption")
+  .option("--trust-cert", "Trust server certificate")
   .action(async (testPath, options) => {
     try {
       const { TestRunner } = await import("./test-runner.js");
       const { statSync } = await import("fs");
 
+      // Helper function to get value with precedence: CLI option > Environment variable > Default
+      const getValue = (cliValue: any, envVar: string, defaultValue: any) => {
+        if (cliValue !== undefined) return cliValue;
+        const envValue = process.env[envVar];
+        if (envValue !== undefined) return envValue;
+        return defaultValue;
+      };
+
+      // Helper for boolean values
+      const getBooleanValue = (cliValue: any, envVar: string, defaultValue: boolean) => {
+        if (cliValue !== undefined) return cliValue;
+        const envValue = process.env[envVar];
+        if (envValue !== undefined) return envValue.toLowerCase() === 'true';
+        return defaultValue;
+      };
+
       const config = {
-        connectionString: options.connection,
-        server: options.host,
-        port: parseInt(options.port),
-        database: options.database,
-        user: options.user,
-        password: options.password,
-        tableName: options.table,
-        schemaName: options.schema,
+        connectionString: getValue(options.connection, 'MSSQL_CONNECTION_STRING', undefined),
+        server: getValue(options.host, 'MSSQL_HOST', 'localhost'),
+        port: parseInt(getValue(options.port, 'MSSQL_PORT', '1433')),
+        database: getValue(options.database, 'MSSQL_DATABASE', 'test'),
+        user: getValue(options.user, 'MSSQL_USER', undefined),
+        password: getValue(options.password, 'MSSQL_PASSWORD', undefined),
+        tableName: getValue(options.table, 'MSSQL_TABLE', 'fhir_resources'),
+        schemaName: getValue(options.schema, 'MSSQL_SCHEMA', 'dbo'),
         options: {
-          encrypt: options.encrypt,
-          trustServerCertificate: options.trustCert,
+          encrypt: getBooleanValue(options.encrypt, 'MSSQL_ENCRYPT', true),
+          trustServerCertificate: getBooleanValue(options.trustCert, 'MSSQL_TRUST_CERT', true),
         },
       };
 
@@ -216,8 +232,22 @@ program
         }
       }
     } catch (error) {
-      console.error("Error running tests:", error);
-      process.exit(1);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Check if this is a prerequisites validation error
+      if (errorMessage.includes('Prerequisites validation failed')) {
+        console.error("❌ Prerequisites validation failed");
+        console.error(errorMessage);
+        console.error("\n💡 Common solutions:");
+        console.error("• Check database connection settings");
+        console.error("• Verify database and schema exist");
+        console.error("• Ensure user has sufficient permissions");
+        console.error("• For SA user issues, check SQL Server authentication mode");
+        process.exit(2); // Different exit code for setup issues
+      } else {
+        console.error("❌ Error running tests:", errorMessage);
+        process.exit(1);
+      }
     }
   });
 

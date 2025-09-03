@@ -1,0 +1,139 @@
+name: SQL on FHIR Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2019-latest
+        env:
+          SA_PASSWORD: ${{ secrets.SA_PASSWORD || 'TestPassword123!' }}
+          ACCEPT_EULA: Y
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P $SA_PASSWORD -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 10s
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: npm run build
+
+    - name: Wait for SQL Server
+      run: |
+        for i in {1..30}; do
+          if sqlcmd -S localhost -U sa -P "${SA_PASSWORD}" -Q "SELECT 1" > /dev/null 2>&1; then
+            echo "SQL Server is ready"
+            break
+          fi
+          echo "Waiting for SQL Server... ($i/30)"
+          sleep 2
+        done
+      env:
+        SA_PASSWORD: ${{ secrets.SA_PASSWORD || 'TestPassword123!' }}
+
+    - name: Create test database
+      run: |
+        sqlcmd -S localhost -U sa -P "${SA_PASSWORD}" -Q "CREATE DATABASE testdb"
+        echo "Test database created successfully"
+      env:
+        SA_PASSWORD: ${{ secrets.SA_PASSWORD || 'TestPassword123!' }}
+
+    - name: Run tests
+      run: npx tsx src/cli.ts test ./sqlonfhir/tests
+      env:
+        MSSQL_HOST: localhost
+        MSSQL_PORT: 1433
+        MSSQL_DATABASE: testdb
+        MSSQL_USER: sa
+        MSSQL_PASSWORD: ${{ secrets.SA_PASSWORD || 'TestPassword123!' }}
+        MSSQL_ENCRYPT: true
+        MSSQL_TRUST_CERT: true
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results
+        path: |
+          test-report.json
+          *.log
+        retention-days: 30
+
+  test-matrix:
+    name: Test Multiple SQL Server Versions
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    strategy:
+      matrix:
+        sql-version: ['2017-latest', '2019-latest', '2022-latest']
+    
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:${{ matrix.sql-version }}
+        env:
+          SA_PASSWORD: TestPassword123!
+          ACCEPT_EULA: Y
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P TestPassword123! -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 10s
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: npm run build
+
+    - name: Create test database
+      run: sqlcmd -S localhost -U sa -P "TestPassword123!" -Q "CREATE DATABASE testdb"
+
+    - name: Run tests
+      run: npx tsx src/cli.ts test ./sqlonfhir/tests
+      env:
+        MSSQL_HOST: localhost
+        MSSQL_DATABASE: testdb
+        MSSQL_USER: sa
+        MSSQL_PASSWORD: TestPassword123!
