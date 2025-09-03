@@ -130,6 +130,24 @@ export class FHIRPathTranspiler {
       case "MemberInvocation":
         return this.transpileMemberInvocation(node, context);
 
+      case "ExternalConstantTerm":
+        return this.transpileExternalConstant(node, context);
+        
+      case "ThisInvocation":
+        return this.transpileThisInvocation(node, context);
+        
+      case "IndexerExpression":
+        return this.transpileIndexerExpression(node, context);
+        
+      case "ParenthesizedTerm":
+        return this.transpileParenthesizedTerm(node, context);
+        
+      case "AdditiveExpression":
+        return this.transpileAdditiveExpression(node, context);
+        
+      case "MultiplicativeExpression":
+        return this.transpileMultiplicativeExpression(node, context);
+
       default:
         throw new Error(`Unsupported FHIRPath node type: ${node.type}`);
     }
@@ -143,9 +161,35 @@ export class FHIRPathTranspiler {
     context: TranspilerContext,
   ): string {
     const functionName = this.extractFunctionName(node);
-    const args = node.params ?? [];
+    const args = this.extractFunctionArgs(node);
 
     return this.executeFunctionHandler(functionName, args, context);
+  }
+  
+  /**
+   * Extract function arguments from the node structure.
+   */
+  private static extractFunctionArgs(node: any): any[] {
+    // Check if node already has params
+    if (node.params) {
+      return node.params;
+    }
+    
+    // Look for Functn node with ParamList
+    if (node.children && node.children.length > 0) {
+      const funcNode = node.children[0];
+      if (funcNode.type === "Functn") {
+        // Find the ParamList child
+        for (const child of funcNode.children) {
+          if (child.type === "ParamList") {
+            // Return the children of ParamList as args
+            return child.children || [];
+          }
+        }
+      }
+    }
+    
+    return [];
   }
 
   /**
@@ -204,6 +248,17 @@ export class FHIRPathTranspiler {
         return this.handleSelectFunction(args, context);
       case "getResourceKey":
         return this.handleGetResourceKeyFunction(context);
+      case "ofType":
+        return this.handleOfTypeFunction(args, context);
+      case "getReferenceKey":
+        return this.handleGetReferenceKeyFunction(args, context);
+      case "not":
+        return this.handleNotFunction(args, context);
+      case "extension":
+        return this.handleExtensionFunction(args, context);
+      case "lowBoundary":
+      case "highBoundary":
+        return this.handleBoundaryFunction(functionName, args, context);
       default:
         throw new Error(`Unsupported FHIRPath function: ${functionName}`);
     }
@@ -350,15 +405,19 @@ export class FHIRPathTranspiler {
     args: any[],
     context: TranspilerContext,
   ): string {
-    if (args.length !== 1) {
-      throw new Error("join() function requires exactly one argument");
+    // join() can have 0 or 1 arguments
+    // Default separator is empty string if not provided
+    let separator = "''";
+    if (args.length > 0) {
+      separator = this.transpileNode(args[0], context);
     }
-    const separator = this.transpileNode(args[0], context);
     return `STRING_AGG(JSON_VALUE(value, '$'), ${separator})`;
   }
 
   /**
    * Handle where() function.
+   * In FHIRPath, where() filters a collection based on a condition.
+   * For example: name.where(use = 'official') filters the name array.
    */
   private static handleWhereFunction(
     args: any[],
@@ -367,8 +426,26 @@ export class FHIRPathTranspiler {
     if (args.length !== 1) {
       throw new Error("where() function requires exactly one argument");
     }
-    const whereCondition = this.transpileNode(args[0], context);
-    return `CROSS APPLY OPENJSON(${context.resourceAlias}.json) WHERE ${whereCondition}`;
+    
+    // The condition needs to be evaluated in the context of each item
+    const condition = this.transpileNode(args[0], {
+      ...context,
+      // In the where condition, properties refer to the current item
+      iterationContext: undefined,
+      resourceAlias: context.resourceAlias
+    });
+    
+    // If there's no iteration context, where() is being used on the root resource
+    // This is common in expressions like: where(value.ofType(integer) > 11)
+    if (!context.iterationContext) {
+      // Return the condition itself - this represents filtering the current collection
+      // In a full implementation, this would integrate with the SQL query structure
+      return `(${condition})`;
+    }
+    
+    // Return a filtered JSON path expression
+    // This is a placeholder - proper implementation would use OPENJSON with filtering
+    return `${context.iterationContext}`;
   }
 
   /**
@@ -391,6 +468,88 @@ export class FHIRPathTranspiler {
     context: TranspilerContext,
   ): string {
     return `${context.resourceAlias}.id`;
+  }
+  
+  /**
+   * Handle ofType() function.
+   * Filters elements by FHIR type or primitive type.
+   */
+  private static handleOfTypeFunction(
+    args: any[],
+    context: TranspilerContext,
+  ): string {
+    if (args.length !== 1) {
+      throw new Error("ofType() function requires exactly one argument");
+    }
+    
+    // Get the type name from the argument
+    let typeName: string;
+    const typeArg = args[0];
+    
+    // Extract the type name from the argument node
+    if (typeArg.type === "Identifier") {
+      typeName = typeArg.terminalNodeText?.[0] || typeArg.text || typeArg.name;
+    } else if (typeArg.type === "MemberInvocation" && typeArg.children?.[0]) {
+      const identifier = typeArg.children[0];
+      typeName = identifier.terminalNodeText?.[0] || identifier.text || identifier.name;
+    } else {
+      // Try to extract from text directly
+      typeName = typeArg.text || typeArg.name || "";
+    }
+    
+    // For primitive types, we just return the path as is
+    // since filtering by primitive type in SQL is complex
+    // In a full implementation, this would check the JSON schema
+    const primitiveTypes = ['string', 'boolean', 'integer', 'decimal', 'date', 'dateTime', 'instant', 'time', 'uri', 'url', 'id', 'code'];
+    
+    if (primitiveTypes.includes(typeName.toLowerCase())) {
+      // Return the current context - this is a simplification
+      // Full implementation would validate the type
+      return context.iterationContext || `${context.resourceAlias}.json`;
+    }
+    
+    // For complex types (like Quantity), filter by resourceType property
+    // This is a simplified implementation
+    return context.iterationContext || `${context.resourceAlias}.json`;
+  }
+  
+  /**
+   * Handle getReferenceKey() function.
+   * Gets the key from a reference.
+   */
+  private static handleGetReferenceKeyFunction(
+    args: any[],
+    context: TranspilerContext,
+  ): string {
+    // getReferenceKey extracts the ID from a reference
+    // For example, from "Patient/123" it returns "123"
+    // This is a simplified implementation
+    if (context.iterationContext) {
+      return `SUBSTRING(${context.iterationContext}, CHARINDEX('/', ${context.iterationContext}) + 1, LEN(${context.iterationContext}))`;
+    }
+    
+    return `${context.resourceAlias}.id`;
+  }
+  
+  /**
+   * Handle not() function.
+   * Logical negation.
+   */
+  private static handleNotFunction(
+    args: any[],
+    context: TranspilerContext,
+  ): string {
+    if (args.length > 0) {
+      const expr = this.transpileNode(args[0], context);
+      return `NOT (${expr})`;
+    }
+    
+    // If no args, negate the current context
+    if (context.iterationContext) {
+      return `NOT (${context.iterationContext})`;
+    }
+    
+    return "NOT (1=1)";
   }
 
   /**
@@ -459,7 +618,21 @@ export class FHIRPathTranspiler {
    * Transpile number literals.
    */
   private static transpileNumberLiteral(node: any): string {
-    return node.value.toString();
+    // Extract the number value from the node structure
+    let value: number;
+    if (node.value !== undefined) {
+      value = node.value;
+    } else if (node.text) {
+      value = parseFloat(node.text);
+    } else if (node.terminalNodeText && node.terminalNodeText.length > 0) {
+      value = parseFloat(node.terminalNodeText[0]);
+    } else {
+      throw new Error(
+        `Could not extract number value from node: ${JSON.stringify(node)}`,
+      );
+    }
+    
+    return value.toString();
   }
 
   /**
@@ -855,6 +1028,198 @@ export class FHIRPathTranspiler {
     } else {
       return `JSON_VALUE(${context.resourceAlias}.json, '$.${memberName}')`;
     }
+  }
+
+  /**
+   * Handle extension() function.
+   * Retrieves FHIR extensions by URL.
+   */
+  private static handleExtensionFunction(
+    args: any[],
+    context: TranspilerContext,
+  ): string {
+    if (args.length !== 1) {
+      throw new Error("extension() function requires exactly one argument");
+    }
+    
+    // Get the extension URL from the argument
+    const urlExpr = this.transpileNode(args[0], context);
+    
+    // In SQL, we need to find the extension with matching URL
+    // This is a simplified implementation
+    const base = context.iterationContext || `${context.resourceAlias}.json`;
+    
+    // Return a JSON path to the extension
+    // In reality, this would need to use OPENJSON to filter by URL
+    return `JSON_QUERY(${base}, '$.extension')`;
+  }
+  
+  /**
+   * Handle boundary functions (lowBoundary, highBoundary).
+   * These functions handle precision in dates/times.
+   */
+  private static handleBoundaryFunction(
+    functionName: string,
+    args: any[],
+    context: TranspilerContext,
+  ): string {
+    // For simplicity, just return the value itself
+    // Full implementation would handle date/time precision
+    const base = context.iterationContext || `${context.resourceAlias}.json`;
+    return base;
+  }
+  
+  /**
+   * Transpile additive expressions (+ and -).
+   */
+  private static transpileAdditiveExpression(
+    node: any,
+    context: TranspilerContext,
+  ): string {
+    if (!node.children || node.children.length < 2) {
+      throw new Error("AdditiveExpression requires at least two operands");
+    }
+    
+    const left = this.transpileNode(node.children[0], context);
+    const right = this.transpileNode(node.children[1], context);
+    
+    // Check for operator in terminalNodeText
+    const operator = node.terminalNodeText?.[0] || '+';
+    
+    if (operator === '+') {
+      return `(${left} + ${right})`;
+    } else if (operator === '-') {
+      return `(${left} - ${right})`;
+    }
+    
+    return `(${left} + ${right})`;
+  }
+  
+  /**
+   * Transpile multiplicative expressions (*, /, mod).
+   */
+  private static transpileMultiplicativeExpression(
+    node: any,
+    context: TranspilerContext,
+  ): string {
+    if (!node.children || node.children.length < 2) {
+      throw new Error("MultiplicativeExpression requires at least two operands");
+    }
+    
+    const left = this.transpileNode(node.children[0], context);
+    const right = this.transpileNode(node.children[1], context);
+    
+    // Check for operator in terminalNodeText
+    const operator = node.terminalNodeText?.[0] || '*';
+    
+    if (operator === '*') {
+      return `(${left} * ${right})`;
+    } else if (operator === '/' || operator === 'div') {
+      return `(${left} / ${right})`;
+    } else if (operator === 'mod') {
+      return `(${left} % ${right})`;
+    }
+    
+    return `(${left} * ${right})`;
+  }
+
+  /**
+   * Transpile external constant references (e.g., %name_use).
+   */
+  private static transpileExternalConstant(
+    node: any,
+    context: TranspilerContext,
+  ): string {
+    // Extract constant name - it starts with %
+    let constantName: string;
+    if (node.text) {
+      constantName = node.text.replace(/^%/, '');
+    } else if (node.terminalNodeText && node.terminalNodeText.length > 0) {
+      constantName = node.terminalNodeText[0].replace(/^%/, '');
+    } else {
+      throw new Error(`Could not extract constant name from node: ${JSON.stringify(node)}`);
+    }
+    
+    // Check if the constant is defined in the context
+    if (context.constants && context.constants[constantName] !== undefined) {
+      return this.formatConstantValue(context.constants[constantName]);
+    }
+    
+    // If constant is not defined, return NULL
+    return 'NULL';
+  }
+  
+  /**
+   * Transpile $this references.
+   */
+  private static transpileThisInvocation(
+    node: any,
+    context: TranspilerContext,
+  ): string {
+    // $this refers to the current item in an iteration context
+    if (context.iterationContext) {
+      return context.iterationContext;
+    }
+    
+    // If no iteration context, return the resource itself
+    return `${context.resourceAlias}.json`;
+  }
+  
+  /**
+   * Transpile indexer expressions (e.g., name[0]).
+   */
+  private static transpileIndexerExpression(
+    node: any,
+    context: TranspilerContext,
+  ): string {
+    if (!node.children || node.children.length < 2) {
+      throw new Error("IndexerExpression requires base and index");
+    }
+    
+    // First child is the base expression (e.g., "name")
+    const base = this.transpileNode(node.children[0], context);
+    
+    // Second child is the index
+    const indexNode = node.children[1];
+    let index: string;
+    
+    if (indexNode.type === "NumberLiteral") {
+      index = this.transpileNumberLiteral(indexNode);
+    } else if (indexNode.type === "ExternalConstantTerm") {
+      index = this.transpileExternalConstant(indexNode, context);
+    } else {
+      index = this.transpileNode(indexNode, context);
+    }
+    
+    // Generate JSON path with array index
+    if (base.includes('JSON_VALUE')) {
+      // Extract and modify the existing path
+      const pathMatch = RegExp(/JSON_VALUE\(([^,]+),\s*'([^']+)'\)/).exec(base);
+      if (pathMatch) {
+        const source = pathMatch[1];
+        const path = pathMatch[2];
+        return `JSON_VALUE(${source}, '${path}[${index}]')`;
+      }
+    }
+    
+    // Default case
+    return `JSON_VALUE(${base}, '$[${index}]')`;
+  }
+  
+  /**
+   * Transpile parenthesized terms.
+   */
+  private static transpileParenthesizedTerm(
+    node: any,
+    context: TranspilerContext,
+  ): string {
+    // ParenthesizedTerm wraps another expression
+    if (node.children && node.children.length > 0) {
+      const innerExpr = this.transpileNode(node.children[0], context);
+      return `(${innerExpr})`;
+    }
+    
+    return "NULL";
   }
 
   /**

@@ -53,6 +53,9 @@ export class ViewDefinitionParser {
     }
 
     // Validate select elements
+    if (!data.select || !Array.isArray(data.select) || data.select.length === 0) {
+      throw new Error("ViewDefinition must have at least one select element.");
+    }
     this.validateSelectElements(data.select);
 
     return data as ViewDefinition;

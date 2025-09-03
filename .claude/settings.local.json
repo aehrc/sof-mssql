@@ -23,7 +23,10 @@
       "Bash(sqlcmd:*)",
       "Bash(kubectl get svc:*)",
       "Bash(kubectl exec:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npm test)",
+      "Bash(npm uninstall:*)",
+      "Bash(npx tsx:*)"
     ],
     "deny": []
   }

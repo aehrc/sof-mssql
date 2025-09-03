@@ -2,6 +2,7 @@
  * Tests for FHIRPath transpiler.
  */
 
+import { describe, it, expect } from "vitest";
 import { FHIRPathTranspiler, TranspilerContext } from "../src";
 
 describe("FHIRPathTranspiler", () => {
@@ -38,7 +39,8 @@ describe("FHIRPathTranspiler", () => {
         defaultContext,
       );
       expect(result).toContain("JSON_VALUE");
-      expect(result).toContain("$.name.family");
+      // name is a FHIR array field, so it gets [0] added
+      expect(result).toContain("$.name[0].family");
     });
   });
 
@@ -65,7 +67,7 @@ describe("FHIRPathTranspiler", () => {
         defaultContext,
       );
       expect(result).toContain("JSON_VALUE");
-      expect(result).toContain("$[0]");
+      expect(result).toContain("$.name[0]");
     });
   });
 

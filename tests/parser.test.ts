@@ -2,6 +2,7 @@
  * Tests for ViewDefinition parser.
  */
 
+import { describe, it, expect } from "vitest";
 import { ViewDefinitionParser } from "../src";
 
 describe("ViewDefinitionParser", () => {
