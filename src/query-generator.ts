@@ -386,13 +386,14 @@ export class QueryGenerator {
       pathParts[0] === "name" &&
       pathParts[1] === "given"
     ) {
-      // For name.given, flatten all given arrays into a single array
-      return `'[' + ISNULL((
-        SELECT STRING_AGG('"' + JSON_VALUE(given.value, '$') + '"', ',')
+      // For name.given, flatten all given arrays into a single array using FOR JSON PATH
+      return `(
+        SELECT JSON_VALUE(given.value, '$') AS [value]
         FROM OPENJSON(${context.resourceAlias}.json, '$.name') as name_obj
         CROSS APPLY OPENJSON(name_obj.value, '$.given') as given
         WHERE JSON_VALUE(given.value, '$') IS NOT NULL
-      ), '') + ']'`;
+        FOR JSON PATH
+      )`;
     } else {
       // Fall back to regular JSON path
       return `JSON_QUERY(${context.resourceAlias}.json, '$.${path}')`;

@@ -110,6 +110,9 @@ export class TestRunner {
     const results: TestResult[] = [];
 
     try {
+      // Clean up any existing test data first to avoid conflicts
+      await this.cleanupTestData();
+      
       // Set up test data
       await this.setupTestData(testSuite.resources);
 
@@ -253,9 +256,18 @@ export class TestRunner {
       return;
     }
 
-    const deleteSql = `DELETE FROM [${this.config.schemaName}].[${this.config.tableName}]`;
-    const request = new Request(this.pool);
-    await request.query(deleteSql);
+    // Use TRUNCATE for faster cleanup and to reset any identity columns
+    // If TRUNCATE fails due to foreign keys, fall back to DELETE
+    try {
+      const truncateSql = `TRUNCATE TABLE [${this.config.schemaName}].[${this.config.tableName}]`;
+      const request = new Request(this.pool);
+      await request.query(truncateSql);
+    } catch (error) {
+      // Fall back to DELETE if TRUNCATE fails
+      const deleteSql = `DELETE FROM [${this.config.schemaName}].[${this.config.tableName}]`;
+      const request = new Request(this.pool);
+      await request.query(deleteSql);
+    }
   }
 
   /**
