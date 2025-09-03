@@ -281,94 +281,46 @@ export class FHIRPathTranspiler {
 
   /**
    * Handle empty() function.
+   * Returns true if the collection is empty or null.
    */
   private static handleEmptyFunction(
     args: any[],
     context: TranspilerContext,
   ): string {
-    if (args.length === 0) {
-      return `(${context.resourceAlias}.json IS NULL)`;
+    // empty() should work on the current context, not take arguments
+    if (context.iterationContext) {
+      // Check if the current path is null or an empty array
+      // Use ISNULL to handle NULL values and check for empty arrays
+      return `CASE WHEN ${context.iterationContext} IS NULL OR ${context.iterationContext} = 'null' OR ${context.iterationContext} = '[]' THEN 1 ELSE 0 END`;
     } else {
-      const pathExpr = this.transpileNode(args[0], context);
-      return `(${pathExpr} IS NULL)`;
+      // Apply to the root resource
+      return `CASE WHEN ${context.resourceAlias}.json IS NULL THEN 1 ELSE 0 END`;
     }
   }
 
   /**
    * Handle first() function.
+   * Returns the first element of a collection.
    */
   private static handleFirstFunction(
     args: any[],
     context: TranspilerContext,
   ): string {
-    if (args.length === 0) {
-      return this.handleFirstWithoutArgs(context);
-    } else {
-      const pathExpr = this.transpileNode(args[0], context);
-      return `JSON_VALUE(${pathExpr}, '$[0]')`;
-    }
-  }
-
-  /**
-   * Handle first() function without arguments.
-   */
-  private static handleFirstWithoutArgs(context: TranspilerContext): string {
+    // first() does not take arguments - it operates on the current context
     if (context.iterationContext) {
-      return this.handleFirstWithIterationContext(context);
+      // If we're already in a specific context, get the first element
+      if (context.iterationContext.includes('[0]')) {
+        // Already accessing first element
+        return context.iterationContext;
+      }
+      // Add [0] to get the first element
+      return `JSON_VALUE(${context.iterationContext}, '$[0]')`;
     } else {
-      return `${context.resourceAlias}.json`;
+      // Default context
+      return `JSON_VALUE(${context.resourceAlias}.json, '$[0]')`;
     }
   }
 
-  /**
-   * Handle first() function when iteration context is available.
-   */
-  private static handleFirstWithIterationContext(
-    context: TranspilerContext,
-  ): string {
-    if (context.iterationContext!.includes("JSON_VALUE")) {
-      return this.handleFirstWithJsonValue(context);
-    }
-    return `JSON_VALUE(${context.iterationContext}, '$[0]')`;
-  }
-
-  /**
-   * Handle first() function when iteration context contains JSON_VALUE.
-   */
-  private static handleFirstWithJsonValue(context: TranspilerContext): string {
-    const pathMatch = RegExp(/JSON_VALUE\(([^,]+),\s*'([^']+)'\)/).exec(
-      context.iterationContext!,
-    );
-    if (pathMatch) {
-      return this.processJsonValueMatch(pathMatch[1], pathMatch[2]);
-    }
-    return `JSON_VALUE(${context.iterationContext}, '$[0]')`;
-  }
-
-  /**
-   * Process a matched JSON_VALUE expression for first() function.
-   */
-  private static processJsonValueMatch(source: string, path: string): string {
-    if (!path.includes("[0]")) {
-      return this.addArrayIndexToPath(source, path);
-    } else {
-      return `JSON_VALUE(${source}, '${path}')`;
-    }
-  }
-
-  /**
-   * Add array index [0] to a JSON path if needed.
-   */
-  private static addArrayIndexToPath(source: string, path: string): string {
-    const pathParts = path.split(".");
-    if (pathParts.length >= 2) {
-      const remainingPath =
-        pathParts.length > 2 ? "." + pathParts.slice(2).join(".") : "";
-      const newPath = `${pathParts[0]}.${pathParts[1]}[0]${remainingPath}`;
-      return `JSON_VALUE(${source}, '${newPath}')`;
-    }
-    return `JSON_VALUE(${source}, '${path}')`;
-  }
 
   /**
    * Handle last() function.
@@ -400,18 +352,30 @@ export class FHIRPathTranspiler {
 
   /**
    * Handle join() function.
+   * Concatenates string values with an optional separator.
    */
   private static handleJoinFunction(
     args: any[],
     context: TranspilerContext,
   ): string {
-    // join() can have 0 or 1 arguments
-    // Default separator is empty string if not provided
+    // join() takes an optional separator argument (default is empty string)
     let separator = "''";
     if (args.length > 0) {
-      separator = this.transpileNode(args[0], context);
+      // Get the separator from the argument
+      const sepNode = args[0];
+      if (sepNode.type === 'StringLiteral') {
+        separator = `'${sepNode.text.replace(/'/g, "''")}'`;
+      } else {
+        separator = this.transpileNode(sepNode, context);
+      }
     }
-    return `STRING_AGG(JSON_VALUE(value, '$'), ${separator})`;
+    
+    // Use OPENJSON to expand the array and STRING_AGG to join
+    if (context.iterationContext) {
+      return `(SELECT STRING_AGG(value, ${separator}) FROM OPENJSON(${context.iterationContext}))`;
+    } else {
+      return `(SELECT STRING_AGG(value, ${separator}) FROM OPENJSON(${context.resourceAlias}.json))`;
+    }
   }
 
   /**
@@ -427,25 +391,42 @@ export class FHIRPathTranspiler {
       throw new Error("where() function requires exactly one argument");
     }
     
-    // The condition needs to be evaluated in the context of each item
-    const condition = this.transpileNode(args[0], {
-      ...context,
-      // In the where condition, properties refer to the current item
-      iterationContext: undefined,
-      resourceAlias: context.resourceAlias
-    });
-    
-    // If there's no iteration context, where() is being used on the root resource
-    // This is common in expressions like: where(value.ofType(integer) > 11)
-    if (!context.iterationContext) {
-      // Return the condition itself - this represents filtering the current collection
-      // In a full implementation, this would integrate with the SQL query structure
-      return `(${condition})`;
+    // For where() on collections, we need to use EXISTS with OPENJSON
+    if (context.iterationContext) {
+      // Extract the JSON path from the iteration context
+      let jsonPath = '$.name'; // Default
+      let source = context.resourceAlias + '.json';
+      
+      // Try to parse the iteration context to get the path
+      if (context.iterationContext.includes('JSON_VALUE')) {
+        const match = /JSON_VALUE\(([^,]+),\s*'([^']+)'\)/.exec(context.iterationContext);
+        if (match) {
+          source = match[1];
+          jsonPath = match[2];
+        }
+      } else if (context.iterationContext.includes('JSON_QUERY')) {
+        const match = /JSON_QUERY\(([^,]+),\s*'([^']+)'\)/.exec(context.iterationContext);
+        if (match) {
+          source = match[1];
+          jsonPath = match[2];
+        }
+      }
+      
+      // Build the condition with proper context for array items
+      const tableAlias = 'item';
+      const condition = this.transpileNode(args[0], {
+        ...context,
+        iterationContext: `${tableAlias}.value`,
+        resourceAlias: context.resourceAlias
+      });
+      
+      // Return an EXISTS subquery that filters the array
+      return `EXISTS (SELECT 1 FROM OPENJSON(${source}, '${jsonPath}') AS ${tableAlias} WHERE ${condition})`;
+    } else {
+      // where() on root - evaluate condition directly
+      const condition = this.transpileNode(args[0], context);
+      return condition;
     }
-    
-    // Return a filtered JSON path expression
-    // This is a placeholder - proper implementation would use OPENJSON with filtering
-    return `${context.iterationContext}`;
   }
 
   /**
