@@ -265,7 +265,7 @@ export class FHIRPathToTSqlVisitor
   }
 
   // Literal visitors
-  visitNullLiteral(ctx: NullLiteralContext): string {
+  visitNullLiteral(_ctx: NullLiteralContext): string {
     return "NULL";
   }
 
@@ -331,7 +331,7 @@ export class FHIRPathToTSqlVisitor
     return this.visit(ctx.function());
   }
 
-  visitThisInvocation(ctx: ThisInvocationContext): string {
+  visitThisInvocation(_ctx: ThisInvocationContext): string {
     // $this refers to the current item in an iteration context
     if (this.context.iterationContext) {
       return this.context.iterationContext;
@@ -339,12 +339,12 @@ export class FHIRPathToTSqlVisitor
     return `${this.context.resourceAlias}.json`;
   }
 
-  visitIndexInvocation(ctx: IndexInvocationContext): string {
+  visitIndexInvocation(_ctx: IndexInvocationContext): string {
     // $index in forEach contexts - simplified implementation
     return "0"; // Default to first index
   }
 
-  visitTotalInvocation(ctx: TotalInvocationContext): string {
+  visitTotalInvocation(_ctx: TotalInvocationContext): string {
     // $total in forEach contexts - simplified implementation
     return "1"; // Default count
   }
@@ -592,7 +592,7 @@ export class FHIRPathToTSqlVisitor
     }
   }
 
-  private handleEmptyFunction(args: string[]): string {
+  private handleEmptyFunction(_args: string[]): string {
     if (this.context.iterationContext) {
       if (this.context.iterationContext.includes("JSON_QUERY")) {
         return `CASE 
@@ -615,7 +615,7 @@ export class FHIRPathToTSqlVisitor
     }
   }
 
-  private handleFirstFunction(args: string[]): string {
+  private handleFirstFunction(_args: string[]): string {
     if (this.context.iterationContext) {
       // Check if we have a JSON_QUERY expression for an array
       if (this.context.iterationContext.includes("JSON_QUERY")) {
@@ -713,7 +713,7 @@ export class FHIRPathToTSqlVisitor
     return this.context.iterationContext || `${this.context.resourceAlias}.json`;
   }
 
-  private handleGetReferenceKeyFunction(args: string[]): string {
+  private handleGetReferenceKeyFunction(_args: string[]): string {
     if (this.context.iterationContext) {
       return `SUBSTRING(${this.context.iterationContext}, CHARINDEX('/', ${this.context.iterationContext}) + 1, LEN(${this.context.iterationContext}))`;
     }
@@ -738,7 +738,7 @@ export class FHIRPathToTSqlVisitor
     return `JSON_QUERY(${base}, '$.extension')`;
   }
 
-  private handleBoundaryFunction(functionName: string, args: string[]): string {
+  private handleBoundaryFunction(_functionName: string, _args: string[]): string {
     const base = this.context.iterationContext || `${this.context.resourceAlias}.json`;
     // Simplified implementation - return the value as-is
     return base;
