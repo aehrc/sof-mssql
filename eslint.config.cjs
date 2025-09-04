@@ -1,11 +1,11 @@
-import eslint from "@eslint/js";
-import tseslint from "@typescript-eslint/eslint-plugin";
-import tsparser from "@typescript-eslint/parser";
+const eslint = require("@eslint/js");
+const tseslint = require("@typescript-eslint/eslint-plugin");
+const tsparser = require("@typescript-eslint/parser");
 
-export default [
+module.exports = [
   // Base ESLint recommended rules
   eslint.configs.recommended,
-  
+
   // TypeScript configuration
   {
     files: ["src/**/*.ts"],
@@ -31,8 +31,14 @@ export default [
     rules: {
       // TypeScript-specific rules for medical/healthcare code
       "@typescript-eslint/no-explicit-any": "error",
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
-      "no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+      "no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
       "@typescript-eslint/explicit-function-return-type": "error",
       "@typescript-eslint/no-non-null-assertion": "error",
       "@typescript-eslint/prefer-nullish-coalescing": "error",
@@ -41,7 +47,7 @@ export default [
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-misused-promises": "error",
       "@typescript-eslint/require-await": "error",
-      
+
       // Naming conventions (Australian English preference)
       "@typescript-eslint/naming-convention": [
         "error",
@@ -64,9 +70,9 @@ export default [
           format: ["PascalCase"],
         },
       ],
-      
+
       // Code quality and safety rules for healthcare data
-      "complexity": ["error", 10],
+      complexity: ["error", 10],
       "max-depth": ["error", 4],
       "max-lines-per-function": ["error", 50],
       "no-console": ["warn", { allow: ["warn", "error"] }],
@@ -76,29 +82,32 @@ export default [
       "no-new-func": "error",
       "no-var": "error",
       "prefer-const": "error",
-      "eqeqeq": ["error", "always"],
-      
+      eqeqeq: ["error", "always"],
+
       // Import and module rules
       "no-duplicate-imports": "error",
-      "sort-imports": ["error", { 
-        ignoreCase: true, 
-        ignoreDeclarationSort: true,
-        ignoreMemberSort: false,
-        memberSyntaxSortOrder: ["none", "all", "multiple", "single"]
-      }],
-      
+      "sort-imports": [
+        "error",
+        {
+          ignoreCase: true,
+          ignoreDeclarationSort: true,
+          ignoreMemberSort: false,
+          memberSyntaxSortOrder: ["none", "all", "multiple", "single"],
+        },
+      ],
+
       // Error handling - critical for medical data processing
       "no-throw-literal": "error",
-      
+
       // Disable rules that conflict with Prettier
-      "indent": "off",
-      "quotes": "off",
-      "semi": "off",
+      indent: "off",
+      quotes: "off",
+      semi: "off",
       "comma-dangle": "off",
       "max-len": "off",
     },
   },
-  
+
   // Test files configuration
   {
     files: ["src/**/*.test.ts"],
@@ -108,22 +117,10 @@ export default [
       "@typescript-eslint/no-explicit-any": "off",
       "max-lines-per-function": "off",
       "no-console": "off",
-      "complexity": "off",
+      complexity: "off",
     },
   },
-  
-  // ANTLR visitor files configuration
-  {
-    files: ["src/fhirpath/visitor.ts", "src/fhirpath/transpiler.ts"],
-    rules: {
-      // Relax rules for complex ANTLR visitor code
-      "complexity": ["error", 30],
-      "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/no-non-null-assertion": "warn",
-      "@typescript-eslint/prefer-nullish-coalescing": "warn",
-    },
-  },
-  
+
   // Ignore patterns
   {
     ignores: [
