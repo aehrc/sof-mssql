@@ -1,25 +1,27 @@
 {
-  "name": "sql-on-fhir-mssql",
+  "name": "sof-mssql",
   "version": "1.0.0",
   "description": "A SQL on FHIR view runner that transpiles view definitions into T-SQL queries for MS SQL Server",
+  "author": "Australian e-Health Research Centre, CSIRO",
+  "contributors": [
+    {
+      "name": "John Grimes",
+      "email": "John.Grimes@csiro.au",
+      "url": "https://people.csiro.au/G/J/john-grimes"
+    }
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "bin": {
-    "sof-mssql": "dist/cli.js"
-  },
   "scripts": {
     "antlr": "antlr4ts -visitor grammar/fhirpath.g4 -o src/generated",
-    "prebuild": "npm run antlr",
     "build": "tsc",
-    "dev": "npm run antlr && tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "coverage": "vitest run --coverage",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "start": "node dist/cli.js"
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\""
   },
   "keywords": [
     "fhir",
@@ -29,11 +31,8 @@
     "healthcare",
     "hl7"
   ],
-  "author": "John Grimes",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "dependencies": {
-    "antlr4ts": "^0.5.0-alpha.4",
-    "commander": "^12.1.0",
     "fhirpath": "^3.15.1"
   },
   "devDependencies": {
