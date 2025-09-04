@@ -146,7 +146,7 @@ program
 
 program
   .command("test")
-  .description("Run tests from sql-on-fhir-v2 test suite")
+  .description("Run tests from sql-on-fhir-v2 test suite using Vitest")
   .argument(
     "<test-path>",
     "Test suite file (JSON) or directory containing test files",
@@ -161,11 +161,10 @@ program
   .option("-s, --schema <name>", "Database schema name")
   .option("--encrypt", "Enable encryption")
   .option("--trust-cert", "Trust server certificate")
+  .option("--report <path>", "Path to write test report JSON file", "test-report.json")
+  .option("--use-legacy", "Use legacy test runner instead of Vitest")
   .action(async (testPath, options) => {
     try {
-      const { TestRunner } = await import("./test-runner.js");
-      const { statSync } = await import("fs");
-
       // Helper function to get value with precedence: CLI option > Environment variable > Default
       const getValue = (cliValue: any, envVar: string, defaultValue: any) => {
         if (cliValue !== undefined) return cliValue;
@@ -182,74 +181,145 @@ program
         return defaultValue;
       };
 
-      const config = {
-        connectionString: getValue(options.connection, 'MSSQL_CONNECTION_STRING', undefined),
-        server: getValue(options.host, 'MSSQL_HOST', 'localhost'),
-        port: parseInt(getValue(options.port, 'MSSQL_PORT', '1433')),
-        database: getValue(options.database, 'MSSQL_DATABASE', 'test'),
-        user: getValue(options.user, 'MSSQL_USER', undefined),
-        password: getValue(options.password, 'MSSQL_PASSWORD', undefined),
-        tableName: getValue(options.table, 'MSSQL_TABLE', 'fhir_resources'),
-        schemaName: getValue(options.schema, 'MSSQL_SCHEMA', 'dbo'),
-        options: {
-          encrypt: getBooleanValue(options.encrypt, 'MSSQL_ENCRYPT', true),
-          trustServerCertificate: getBooleanValue(options.trustCert, 'MSSQL_TRUST_CERT', true),
-        },
-      };
+      // Set up environment variables for Vitest and database connection
+      process.env.SQLONFHIR_TEST_PATH = testPath;
+      process.env.MSSQL_CONNECTION_STRING = getValue(options.connection, 'MSSQL_CONNECTION_STRING', '');
+      process.env.MSSQL_HOST = getValue(options.host, 'MSSQL_HOST', 'localhost');
+      process.env.MSSQL_PORT = getValue(options.port, 'MSSQL_PORT', '1433');
+      process.env.MSSQL_DATABASE = getValue(options.database, 'MSSQL_DATABASE', 'test');
+      process.env.MSSQL_USER = getValue(options.user, 'MSSQL_USER', '');
+      process.env.MSSQL_PASSWORD = getValue(options.password, 'MSSQL_PASSWORD', '');
+      process.env.MSSQL_TABLE = getValue(options.table, 'MSSQL_TABLE', 'fhir_resources');
+      process.env.MSSQL_SCHEMA = getValue(options.schema, 'MSSQL_SCHEMA', 'dbo');
+      process.env.MSSQL_ENCRYPT = getBooleanValue(options.encrypt, 'MSSQL_ENCRYPT', true) ? 'true' : 'false';
+      process.env.MSSQL_TRUST_CERT = getBooleanValue(options.trustCert, 'MSSQL_TRUST_CERT', true) ? 'true' : 'false';
 
-      // Check if testPath is a file or directory
-      const stats = statSync(testPath);
-
-      if (stats.isDirectory()) {
-        // Run all JSON test files in the directory
-        console.log(`Running all test suites in directory: ${testPath}`);
-        const results = await TestRunner.runTestSuitesFromDirectory(
-          testPath,
-          config,
-        );
-        TestRunner.printDirectoryResults(results);
-
-        const totalPassed = results.reduce(
-          (sum: number, result) => sum + result.passedCount,
-          0,
-        );
-        const totalTests = results.reduce(
-          (sum: number, result) => sum + result.totalCount,
-          0,
-        );
-
-        if (totalPassed !== totalTests) {
-          process.exit(1);
-        }
-      } else {
-        // Run single test file
-        console.log(`Running test suite: ${testPath}`);
-        const result = await TestRunner.runTestSuiteFromFile(testPath, config);
-        TestRunner.printResults(result);
-
-        if (result.passedCount !== result.totalCount) {
-          process.exit(1);
-        }
+      // Use legacy runner if requested
+      if (options.useLegacy) {
+        return await runLegacyTests(testPath, options);
       }
+
+      // Use Vitest to run the tests
+      const { spawn } = await import("child_process");
+      const { resolve } = await import("path");
+      const { existsSync } = await import("fs");
+
+      console.log(`🧪 Running SQL-on-FHIR tests using Vitest: ${testPath}`);
+
+      // Create custom reporter instance for report generation
+      const reporterPath = resolve(__dirname, "./vitest-reporter.js");
+      const { SqlOnFhirReporter } = await import("./vitest-reporter.js");
+      const reporter = new SqlOnFhirReporter({
+        outputPath: options.report,
+        autoWriteReport: true,
+      });
+
+      // Run Vitest with the dynamic test file
+      const vitestArgs = [
+        "run",
+        "tests/sql-on-fhir-dynamic.test.ts",
+        "--reporter=default",
+        `--reporter=${reporterPath}`,
+      ];
+
+      const vitestProcess = spawn("npx", ["vitest", ...vitestArgs], {
+        stdio: "inherit",
+        env: { ...process.env },
+      });
+
+      vitestProcess.on("close", (code) => {
+        if (code === 0) {
+          console.log(`✅ All tests passed! Report written to: ${options.report}`);
+        } else {
+          console.error(`❌ Tests failed with exit code: ${code}`);
+          process.exit(code || 1);
+        }
+      });
+
+      vitestProcess.on("error", (error) => {
+        console.error(`❌ Failed to run Vitest: ${error.message}`);
+        console.error("\n💡 Make sure Vitest is installed: npm install");
+        process.exit(1);
+      });
+
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      // Check if this is a prerequisites validation error
-      if (errorMessage.includes('Prerequisites validation failed')) {
-        console.error("❌ Prerequisites validation failed");
-        console.error(errorMessage);
-        console.error("\n💡 Common solutions:");
-        console.error("• Check database connection settings");
-        console.error("• Verify database and schema exist");
-        console.error("• Ensure user has sufficient permissions");
-        console.error("• For SA user issues, check SQL Server authentication mode");
-        process.exit(2); // Different exit code for setup issues
-      } else {
-        console.error("❌ Error running tests:", errorMessage);
-        process.exit(1);
-      }
+      console.error("❌ Error running tests:", errorMessage);
+      process.exit(1);
     }
   });
+
+/**
+ * Run tests using the legacy TestRunner (fallback option).
+ */
+async function runLegacyTests(testPath: string, options: any) {
+  const { TestRunner } = await import("./test-runner.js");
+  const { statSync } = await import("fs");
+
+  // Helper functions (same as before)
+  const getValue = (cliValue: any, envVar: string, defaultValue: any) => {
+    if (cliValue !== undefined) return cliValue;
+    const envValue = process.env[envVar];
+    if (envValue !== undefined) return envValue;
+    return defaultValue;
+  };
+
+  const getBooleanValue = (cliValue: any, envVar: string, defaultValue: boolean) => {
+    if (cliValue !== undefined) return cliValue;
+    const envValue = process.env[envVar];
+    if (envValue !== undefined) return envValue.toLowerCase() === 'true';
+    return defaultValue;
+  };
+
+  const config = {
+    connectionString: getValue(options.connection, 'MSSQL_CONNECTION_STRING', undefined),
+    server: getValue(options.host, 'MSSQL_HOST', 'localhost'),
+    port: parseInt(getValue(options.port, 'MSSQL_PORT', '1433')),
+    database: getValue(options.database, 'MSSQL_DATABASE', 'test'),
+    user: getValue(options.user, 'MSSQL_USER', undefined),
+    password: getValue(options.password, 'MSSQL_PASSWORD', undefined),
+    tableName: getValue(options.table, 'MSSQL_TABLE', 'fhir_resources'),
+    schemaName: getValue(options.schema, 'MSSQL_SCHEMA', 'dbo'),
+    options: {
+      encrypt: getBooleanValue(options.encrypt, 'MSSQL_ENCRYPT', true),
+      trustServerCertificate: getBooleanValue(options.trustCert, 'MSSQL_TRUST_CERT', true),
+    },
+  };
+
+  // Check if testPath is a file or directory
+  const stats = statSync(testPath);
+
+  if (stats.isDirectory()) {
+    console.log(`Running all test suites in directory: ${testPath}`);
+    const results = await TestRunner.runTestSuitesFromDirectory(testPath, config);
+    TestRunner.printDirectoryResults(results);
+
+    // Generate and write test report
+    const report = TestRunner.generateDirectoryTestReport(results);
+    await TestRunner.writeTestReport(report, options.report);
+    console.log(`📝 Test report written to: ${options.report}`);
+
+    const totalPassed = results.reduce((sum: number, result) => sum + result.passedCount, 0);
+    const totalTests = results.reduce((sum: number, result) => sum + result.totalCount, 0);
+
+    if (totalPassed !== totalTests) {
+      process.exit(1);
+    }
+  } else {
+    console.log(`Running test suite: ${testPath}`);
+    const result = await TestRunner.runTestSuiteFromFile(testPath, config);
+    TestRunner.printResults(result);
+
+    // Generate and write test report
+    const report = TestRunner.generateTestReport(result);
+    await TestRunner.writeTestReport(report, options.report);
+    console.log(`📝 Test report written to: ${options.report}`);
+
+    if (result.passedCount !== result.totalCount) {
+      process.exit(1);
+    }
+  }
+}
 
 program
   .command("examples")
