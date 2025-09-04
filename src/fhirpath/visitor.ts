@@ -48,7 +48,7 @@ import { fhirpathVisitor } from "../generated/grammar/fhirpathVisitor";
 
 export interface TranspilerContext {
   resourceAlias: string;
-  constants?: { [key: string]: any };
+  constants?: { [key: string]: string | number | boolean | null };
   iterationContext?: string;
 }
 
@@ -56,7 +56,7 @@ export class FHIRPathToTSqlVisitor
   extends AbstractParseTreeVisitor<string>
   implements fhirpathVisitor<string>
 {
-  constructor(private context: TranspilerContext) {
+  constructor(private readonly context: TranspilerContext) {
     super();
   }
 
@@ -152,7 +152,11 @@ export class FHIRPathToTSqlVisitor
   visitTypeExpression(ctx: TypeExpressionContext): string {
     const expression = this.visit(ctx.expression());
     const typeSpec = this.visit(ctx.typeSpecifier());
-    const operator = this.getOperatorFromContext(ctx.text, expression, typeSpec);
+    const operator = this.getOperatorFromContext(
+      ctx.text,
+      expression,
+      typeSpec,
+    );
 
     if (operator === "is") {
       // Type checking - simplified implementation
@@ -369,16 +373,20 @@ export class FHIRPathToTSqlVisitor
 
   visitExternalConstant(ctx: ExternalConstantContext): string {
     let constantName: string;
-    
-    if (ctx.identifier()) {
-      constantName = this.visit(ctx.identifier()!);
+
+    const identifier = ctx.identifier();
+    if (identifier) {
+      constantName = this.visit(identifier);
     } else {
       // STRING case - remove quotes
-      constantName = ctx.STRING()?.text.slice(1, -1) || "";
+      constantName = ctx.STRING()?.text.slice(1, -1) ?? "";
     }
 
     // Check if the constant is defined in the context
-    if (this.context.constants && this.context.constants[constantName] !== undefined) {
+    if (
+      this.context.constants &&
+      this.context.constants[constantName] !== undefined
+    ) {
       return this.formatConstantValue(this.context.constants[constantName]);
     }
 
@@ -387,7 +395,8 @@ export class FHIRPathToTSqlVisitor
 
   visitFunction(ctx: FunctionContext): string {
     const functionName = this.visit(ctx.identifier());
-    const args = ctx.paramList() ? this.getParameterList(ctx.paramList()!) : [];
+    const paramList = ctx.paramList();
+    const args = paramList ? this.getParameterList(paramList) : [];
 
     return this.executeFunctionHandler(functionName, args);
   }
@@ -399,11 +408,14 @@ export class FHIRPathToTSqlVisitor
   }
 
   visitIdentifier(ctx: IdentifierContext): string {
-    if (ctx.IDENTIFIER()) {
-      return ctx.IDENTIFIER()!.text;
-    } else if (ctx.DELIMITEDIDENTIFIER()) {
+    const identifier = ctx.IDENTIFIER();
+    const delimitedIdentifier = ctx.DELIMITEDIDENTIFIER();
+
+    if (identifier) {
+      return identifier.text;
+    } else if (delimitedIdentifier) {
       // Remove backticks
-      return ctx.DELIMITEDIDENTIFIER()!.text.slice(1, -1);
+      return delimitedIdentifier.text.slice(1, -1);
     } else {
       // One of the keyword identifiers
       return ctx.text;
@@ -411,12 +423,15 @@ export class FHIRPathToTSqlVisitor
   }
 
   visitQualifiedIdentifier(ctx: QualifiedIdentifierContext): string {
-    const parts = ctx.identifier().map(id => this.visit(id));
+    const parts = ctx.identifier().map((id) => this.visit(id));
     return parts.join(".");
   }
 
   // Helper methods
-  private handleMemberInvocation(base: string, memberCtx: MemberInvocationContext): string {
+  private handleMemberInvocation(
+    base: string,
+    memberCtx: MemberInvocationContext,
+  ): string {
     const memberName = this.visit(memberCtx.identifier());
 
     // Create JSON path access
@@ -428,8 +443,12 @@ export class FHIRPathToTSqlVisitor
 
         // Special handling for FHIR array fields
         const knownArrayFields = [
-          "name", "telecom", "address", "identifier", 
-          "extension", "contact"
+          "name",
+          "telecom",
+          "address",
+          "identifier",
+          "extension",
+          "contact",
         ];
         const pathParts = existingPath.split(".");
         if (
@@ -449,10 +468,13 @@ export class FHIRPathToTSqlVisitor
     return `JSON_VALUE(${base}, '$.${memberName}')`;
   }
 
-  private handleFunctionInvocation(base: string, functionCtx: FunctionInvocationContext): string {
+  private handleFunctionInvocation(
+    base: string,
+    functionCtx: FunctionInvocationContext,
+  ): string {
     const functionName = this.visit(functionCtx.function().identifier());
-    const args = functionCtx.function().paramList() ? 
-      this.getParameterList(functionCtx.function().paramList()!) : [];
+    const paramList = functionCtx.function().paramList();
+    const args = paramList ? this.getParameterList(paramList) : [];
 
     // Special handling for first() function to match expected format
     if (functionName === "first") {
@@ -462,7 +484,11 @@ export class FHIRPathToTSqlVisitor
         const source = simpleJsonMatch[1];
         const path = simpleJsonMatch[2];
         return `JSON_VALUE(${source}, '${path}[0]')`;
-      } else if (!base.includes("JSON_VALUE") && !base.includes("EXISTS") && !base.includes("SELECT")) {
+      } else if (
+        !base.includes("JSON_VALUE") &&
+        !base.includes("EXISTS") &&
+        !base.includes("SELECT")
+      ) {
         // Simple identifier like 'name'
         return `JSON_VALUE(${this.context.resourceAlias}.json, '$.${base}[0]')`;
       } else {
@@ -473,7 +499,11 @@ export class FHIRPathToTSqlVisitor
     // Create new context with the base as iteration context
     let newContext: TranspilerContext;
 
-    if (!base.includes("JSON_VALUE") && !base.includes("EXISTS") && !base.includes("SELECT")) {
+    if (
+      !base.includes("JSON_VALUE") &&
+      !base.includes("EXISTS") &&
+      !base.includes("SELECT")
+    ) {
       // Simple identifier like 'name' - construct proper JSON path
       newContext = {
         ...this.context,
@@ -492,48 +522,65 @@ export class FHIRPathToTSqlVisitor
   }
 
   private getParameterList(paramListCtx: ParamListContext): string[] {
-    return paramListCtx.expression().map(expr => this.visit(expr));
+    return paramListCtx.expression().map((expr) => this.visit(expr));
   }
 
-  private getOperatorFromContext(fullText: string, left: string, right: string): string {
-    // Extract operator by removing left and right operands from full text
-    // This is a simplified approach - in practice, you'd use the parse tree structure
+  private getOperatorFromContext(
+    fullText: string,
+    left: string,
+    right: string,
+  ): string {
     const leftIndex = fullText.indexOf(left);
     const rightIndex = fullText.lastIndexOf(right);
-    
-    if (leftIndex !== -1 && rightIndex !== -1) {
-      const operatorPart = fullText.substring(leftIndex + left.length, rightIndex).trim();
-      
-      // Common operators
-      if (operatorPart.includes("<=")) return "<=";
-      if (operatorPart.includes(">=")) return ">=";
-      if (operatorPart.includes("!=")) return "!=";
-      if (operatorPart.includes("!~")) return "!~";
-      if (operatorPart.includes("<")) return "<";
-      if (operatorPart.includes(">")) return ">";
-      if (operatorPart.includes("=")) return "=";
-      if (operatorPart.includes("~")) return "~";
-      if (operatorPart.includes("and")) return "and";
-      if (operatorPart.includes("or")) return "or";
-      if (operatorPart.includes("xor")) return "xor";
-      if (operatorPart.includes("implies")) return "implies";
-      if (operatorPart.includes("in")) return "in";
-      if (operatorPart.includes("contains")) return "contains";
-      if (operatorPart.includes("is")) return "is";
-      if (operatorPart.includes("as")) return "as";
-      if (operatorPart.includes("div")) return "div";
-      if (operatorPart.includes("mod")) return "mod";
-      if (operatorPart.includes("*")) return "*";
-      if (operatorPart.includes("/")) return "/";
-      if (operatorPart.includes("+")) return "+";
-      if (operatorPart.includes("-")) return "-";
-      if (operatorPart.includes("&")) return "&";
+
+    if (leftIndex === -1 || rightIndex === -1) {
+      return "";
     }
-    
+
+    const operatorPart = fullText
+      .substring(leftIndex + left.length, rightIndex)
+      .trim();
+    return this.extractOperatorFromText(operatorPart);
+  }
+
+  private extractOperatorFromText(operatorPart: string): string {
+    // Order matters: check longer operators first to avoid substring matches
+    const operators = [
+      "<=",
+      ">=",
+      "!=",
+      "!~",
+      "implies",
+      "contains",
+      "and",
+      "or",
+      "xor",
+      "div",
+      "mod",
+      "in",
+      "is",
+      "as",
+      "<",
+      ">",
+      "=",
+      "~",
+      "*",
+      "/",
+      "+",
+      "-",
+      "&",
+    ];
+
+    for (const operator of operators) {
+      if (operatorPart.includes(operator)) {
+        return operator;
+      }
+    }
+
     return "";
   }
 
-  private formatConstantValue(value: any): string {
+  private formatConstantValue(value: string | number | boolean | null): string {
     if (typeof value === "string") {
       return `'${value.replace(/'/g, "''")}'`;
     } else if (typeof value === "number") {
@@ -548,39 +595,30 @@ export class FHIRPathToTSqlVisitor
   }
 
   private executeFunctionHandler(functionName: string, args: string[]): string {
-    switch (functionName) {
-      case "exists":
-        return this.handleExistsFunction(args);
-      case "empty":
-        return this.handleEmptyFunction(args);
-      case "first":
-        return this.handleFirstFunction(args);
-      case "last":
-        return this.handleLastFunction(args);
-      case "count":
-        return this.handleCountFunction(args);
-      case "join":
-        return this.handleJoinFunction(args);
-      case "where":
-        return this.handleWhereFunction(args);
-      case "select":
-        return this.handleSelectFunction(args);
-      case "getResourceKey":
-        return this.handleGetResourceKeyFunction();
-      case "ofType":
-        return this.handleOfTypeFunction(args);
-      case "getReferenceKey":
-        return this.handleGetReferenceKeyFunction(args);
-      case "not":
-        return this.handleNotFunction(args);
-      case "extension":
-        return this.handleExtensionFunction(args);
-      case "lowBoundary":
-      case "highBoundary":
-        return this.handleBoundaryFunction(functionName, args);
-      default:
-        throw new Error(`Unsupported FHIRPath function: ${functionName}`);
+    const functionMap: Record<string, (args: string[]) => string> = {
+      exists: (args) => this.handleExistsFunction(args),
+      empty: (args) => this.handleEmptyFunction(args),
+      first: (args) => this.handleFirstFunction(args),
+      last: (args) => this.handleLastFunction(args),
+      count: (args) => this.handleCountFunction(args),
+      join: (args) => this.handleJoinFunction(args),
+      where: (args) => this.handleWhereFunction(args),
+      select: (args) => this.handleSelectFunction(args),
+      getResourceKey: () => this.handleGetResourceKeyFunction(),
+      ofType: (args) => this.handleOfTypeFunction(args),
+      getReferenceKey: (args) => this.handleGetReferenceKeyFunction(args),
+      not: (args) => this.handleNotFunction(args),
+      extension: (args) => this.handleExtensionFunction(args),
+      lowBoundary: (args) => this.handleBoundaryFunction(functionName, args),
+      highBoundary: (args) => this.handleBoundaryFunction(functionName, args),
+    };
+
+    const handler = functionMap[functionName];
+    if (!handler) {
+      throw new Error(`Unsupported FHIRPath function: ${functionName}`);
     }
+
+    return handler(args);
   }
 
   // Function handlers (simplified versions of the original implementations)
@@ -619,14 +657,16 @@ export class FHIRPathToTSqlVisitor
     if (this.context.iterationContext) {
       // Check if we have a JSON_QUERY expression for an array
       if (this.context.iterationContext.includes("JSON_QUERY")) {
-        const match = /JSON_QUERY\(([^,]+),\s*'([^']+)'\)/.exec(this.context.iterationContext);
+        const match = /JSON_QUERY\(([^,]+),\s*'([^']+)'\)/.exec(
+          this.context.iterationContext,
+        );
         if (match) {
           const source = match[1];
           const path = match[2];
           return `JSON_VALUE(${source}, '${path}[0]')`;
         }
       }
-      
+
       if (this.context.iterationContext.includes("[0]")) {
         return this.context.iterationContext;
       }
@@ -637,16 +677,20 @@ export class FHIRPathToTSqlVisitor
   }
 
   private handleLastFunction(args: string[]): string {
-    const pathExpr = args.length > 0 
-      ? args[0]
-      : (this.context.iterationContext ?? `${this.context.resourceAlias}.json`);
+    const pathExpr =
+      args.length > 0
+        ? args[0]
+        : (this.context.iterationContext ??
+          `${this.context.resourceAlias}.json`);
     return `JSON_VALUE(${pathExpr}, '$[last]')`;
   }
 
   private handleCountFunction(args: string[]): string {
-    const countPath = args.length > 0 
-      ? args[0]
-      : (this.context.iterationContext ?? `${this.context.resourceAlias}.json`);
+    const countPath =
+      args.length > 0
+        ? args[0]
+        : (this.context.iterationContext ??
+          `${this.context.resourceAlias}.json`);
     return `JSON_ARRAY_LENGTH(${countPath})`;
   }
 
@@ -656,7 +700,8 @@ export class FHIRPathToTSqlVisitor
       separator = args[0];
     }
 
-    const context = this.context.iterationContext || `${this.context.resourceAlias}.json`;
+    const context =
+      this.context.iterationContext ?? `${this.context.resourceAlias}.json`;
     return `ISNULL((SELECT STRING_AGG(ISNULL(value, ''), ${separator}) WITHIN GROUP (ORDER BY [key]) 
             FROM OPENJSON(${context}) 
             WHERE type IN (1, 2)), '')`;
@@ -672,13 +717,17 @@ export class FHIRPathToTSqlVisitor
       let source = this.context.resourceAlias + ".json";
 
       if (this.context.iterationContext.includes("JSON_VALUE")) {
-        const match = /JSON_VALUE\(([^,]+),\s*'([^']+)'\)/.exec(this.context.iterationContext);
+        const match = /JSON_VALUE\(([^,]+),\s*'([^']+)'\)/.exec(
+          this.context.iterationContext,
+        );
         if (match) {
           source = match[1];
           jsonPath = match[2];
         }
       } else if (this.context.iterationContext.includes("JSON_QUERY")) {
-        const match = /JSON_QUERY\(([^,]+),\s*'([^']+)'\)/.exec(this.context.iterationContext);
+        const match = /JSON_QUERY\(([^,]+),\s*'([^']+)'\)/.exec(
+          this.context.iterationContext,
+        );
         if (match) {
           source = match[1];
           jsonPath = match[2];
@@ -710,7 +759,9 @@ export class FHIRPathToTSqlVisitor
       throw new Error("ofType() function requires exactly one argument");
     }
     // Simplified implementation - return current context
-    return this.context.iterationContext || `${this.context.resourceAlias}.json`;
+    return (
+      this.context.iterationContext ?? `${this.context.resourceAlias}.json`
+    );
   }
 
   private handleGetReferenceKeyFunction(_args: string[]): string {
@@ -734,12 +785,17 @@ export class FHIRPathToTSqlVisitor
     if (args.length !== 1) {
       throw new Error("extension() function requires exactly one argument");
     }
-    const base = this.context.iterationContext || `${this.context.resourceAlias}.json`;
+    const base =
+      this.context.iterationContext ?? `${this.context.resourceAlias}.json`;
     return `JSON_QUERY(${base}, '$.extension')`;
   }
 
-  private handleBoundaryFunction(_functionName: string, _args: string[]): string {
-    const base = this.context.iterationContext || `${this.context.resourceAlias}.json`;
+  private handleBoundaryFunction(
+    _functionName: string,
+    _args: string[],
+  ): string {
+    const base =
+      this.context.iterationContext ?? `${this.context.resourceAlias}.json`;
     // Simplified implementation - return the value as-is
     return base;
   }

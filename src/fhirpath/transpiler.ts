@@ -54,45 +54,33 @@ export class Transpiler {
    * Get the SQL data type for a FHIRPath expression result.
    */
   static inferSqlType(fhirType?: string): string {
-    switch (fhirType?.toLowerCase()) {
-      case "id":
-      case "string":
-      case "markdown":
-      case "code":
-      case "uri":
-      case "url":
-      case "canonical":
-      case "uuid":
-      case "oid":
-        return "NVARCHAR(MAX)";
+    const typeMap: Record<string, string> = {
+      id: "NVARCHAR(MAX)",
+      string: "NVARCHAR(MAX)",
+      markdown: "NVARCHAR(MAX)",
+      code: "NVARCHAR(MAX)",
+      uri: "NVARCHAR(MAX)",
+      url: "NVARCHAR(MAX)",
+      canonical: "NVARCHAR(MAX)",
+      uuid: "NVARCHAR(MAX)",
+      oid: "NVARCHAR(MAX)",
+      boolean: "BIT",
+      integer: "INT",
+      positiveint: "INT",
+      unsignedint: "INT",
+      integer64: "BIGINT",
+      decimal: "DECIMAL(18,6)",
+      date: "DATETIME2",
+      datetime: "DATETIME2",
+      instant: "DATETIME2",
+      time: "TIME",
+      base64binary: "VARBINARY(MAX)",
+    };
 
-      case "boolean":
-        return "BIT";
-
-      case "integer":
-      case "positiveint":
-      case "unsignedint":
-        return "INT";
-
-      case "integer64":
-        return "BIGINT";
-
-      case "decimal":
-        return "DECIMAL(18,6)";
-
-      case "date":
-      case "datetime":
-      case "instant":
-        return "DATETIME2";
-
-      case "time":
-        return "TIME";
-
-      case "base64binary":
-        return "VARBINARY(MAX)";
-
-      default:
-        return "NVARCHAR(MAX)";
+    if (!fhirType) {
+      return "NVARCHAR(MAX)";
     }
+
+    return typeMap[fhirType.toLowerCase()] ?? "NVARCHAR(MAX)";
   }
 }
