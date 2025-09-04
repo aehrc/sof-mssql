@@ -7,7 +7,7 @@
  */
 
 import { writeFileSync } from "fs";
-import type { RunnerTask, RunnerTestFile } from "vitest";
+import type { RunnerTestFile, RunnerTask, RunnerTaskResultPack, RunnerTaskEventPack } from "vitest";
 import type { Reporter } from "vitest/reporters";
 import type { TestReport, TestReportEntry } from "./runner";
 
@@ -35,8 +35,9 @@ class SqlOnFhirReporter implements Reporter {
 
   /**
    * Called when all tests have finished running.
+   * @deprecated use onTestRunEnd instead
    */
-  onFinished(files?: RunnerTestFile[]): void {
+  onFinished(files?: RunnerTestFile[], _errors?: unknown[], _coverage?: unknown): void {
     if (!files) return;
 
     // Collect results from global storage set by dynamic tests
@@ -100,7 +101,7 @@ class SqlOnFhirReporter implements Reporter {
   private collectTestsFromSuite(suite: RunnerTask): TestReportEntry[] {
     const tests: TestReportEntry[] = [];
 
-    if (suite.tasks) {
+    if ('tasks' in suite && suite.tasks) {
       for (const task of suite.tasks) {
         if (task.type === "test") {
           tests.push({
@@ -130,16 +131,16 @@ class SqlOnFhirReporter implements Reporter {
   }
 
   // Optional Vitest reporter methods (can be implemented as needed)
-  onTaskUpdate?(task: RunnerTask): void {
+  onTaskUpdate?(_packs: RunnerTaskResultPack[], _events?: RunnerTaskEventPack[]): void {
     // Could be used for real-time result collection
   }
 
-  onInit?(ctx: any): void {
+  onInit?(_ctx: any): void {
     // Clear results when reporter initializes
     this.clearResults();
   }
 
-  onUserConsoleLog?(log: any): void {
+  onUserConsoleLog?(_log: any): void {
     // Pass through console logs
   }
 
@@ -147,7 +148,7 @@ class SqlOnFhirReporter implements Reporter {
     // Called when in watch mode
   }
 
-  onWatcherRerun?(files: string[], trigger?: string): void {
+  onWatcherRerun?(_files: string[], _trigger?: string): void {
     // Called on file changes in watch mode
     this.clearResults();
   }
