@@ -1,17 +1,32 @@
 /**
  * Dynamic Vitest test generator for SQL-on-FHIR test definitions.
- * 
+ *
  * Creates Vitest test suites dynamically at runtime without generating physical files.
  * Each SQL-on-FHIR JSON test file becomes a describe block with individual it blocks
  * for each test case. Results are collected for report generation.
  */
 
-import { readFileSync, readdirSync, statSync } from "fs";
-import { join, basename } from "path";
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
-import { TestSuite, TestCase } from "./types.js";
-import { ViewDefinitionParser } from "./parser.js";
-import type { TestReportEntry, TestReportSuite, TestReport } from "./test-runner.js";
+import { readdirSync, readFileSync, statSync } from "fs";
+import { join } from "path";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
+import { ViewDefinitionParser } from "../../parser";
+import { TestCase, TestSuite } from "../../types";
+import {
+  cleanupDatabase,
+  cleanupTestData,
+  setupDatabase,
+  setupTestData,
+} from "./database.js";
+import type { TestReport, TestReportEntry } from "./runner";
+import { compareResults, executeViewDefinition } from "./sqlOnFhir";
 
 // Global storage for test results
 declare global {
@@ -51,33 +66,32 @@ export class DynamicVitestGenerator {
   /**
    * Generate a Vitest test suite for a SQL-on-FHIR test definition.
    */
-  private async generateTestSuite(testSuite: TestSuite, suiteName: string): Promise<void> {
+  private async generateTestSuite(
+    testSuite: TestSuite,
+    suiteName: string,
+  ): Promise<void> {
     const suiteResults: TestReportEntry[] = [];
 
     describe(suiteName, () => {
       beforeAll(async () => {
-        const { setupDatabase } = await import("../tests/setup/database.js");
         await setupDatabase();
       });
 
       afterAll(async () => {
-        const { cleanupDatabase } = await import("../tests/setup/database.js");
         await cleanupDatabase();
-        
+
         // Store results for report generation
-        if (typeof global !== 'undefined') {
+        if (typeof global !== "undefined") {
           global.__TEST_RESULTS__ = global.__TEST_RESULTS__ || {};
           global.__TEST_RESULTS__[suiteName] = { tests: suiteResults };
         }
       });
 
       beforeEach(async () => {
-        const { setupTestData } = await import("../tests/setup/database.js");
         await setupTestData(testSuite.resources);
       });
 
       afterEach(async () => {
-        const { cleanupTestData } = await import("../tests/setup/database.js");
         await cleanupTestData();
       });
 
@@ -91,15 +105,17 @@ export class DynamicVitestGenerator {
   /**
    * Generate a single test case within the current describe block.
    */
-  private generateTestCase(testCase: TestCase, suiteResults: TestReportEntry[]): void {
+  private generateTestCase(
+    testCase: TestCase,
+    suiteResults: TestReportEntry[],
+  ): void {
     const testName = testCase.title;
 
     if (testCase.expectError) {
       it(testName, async () => {
         try {
-          const { executeViewDefinition } = await import("../tests/utils/sql-on-fhir-helpers.js");
           await executeViewDefinition(testCase.view);
-          
+
           // If we get here, the test should have failed but didn't
           suiteResults.push({ name: testName, result: { passed: false } });
           expect.fail("Expected an error but the test passed");
@@ -111,21 +127,21 @@ export class DynamicVitestGenerator {
     } else {
       it(testName, async () => {
         try {
-          const { executeViewDefinition, compareResults } = await import("../tests/utils/sql-on-fhir-helpers.js");
-          
           const actualResults = await executeViewDefinition(testCase.view);
           const passed = compareResults(
-            actualResults, 
-            testCase.expect || [], 
-            testCase.expectColumns
+            actualResults,
+            testCase.expect || [],
+            testCase.expectColumns,
           );
-          
+
           suiteResults.push({ name: testName, result: { passed } });
-          
+
           if (!passed) {
-            expect.fail(`Results don't match. Expected: ${JSON.stringify(testCase.expect)}, Actual: ${JSON.stringify(actualResults)}`);
+            expect.fail(
+              `Results don't match. Expected: ${JSON.stringify(testCase.expect)}, Actual: ${JSON.stringify(actualResults)}`,
+            );
           }
-          
+
           expect(passed).toBe(true);
         } catch (error) {
           suiteResults.push({ name: testName, result: { passed: false } });
@@ -146,7 +162,7 @@ export class DynamicVitestGenerator {
    * Clear test results.
    */
   clearTestResults(): void {
-    if (typeof global !== 'undefined') {
+    if (typeof global !== "undefined") {
       global.__TEST_RESULTS__ = {};
     }
   }
@@ -156,21 +172,25 @@ export class DynamicVitestGenerator {
  * Create and run dynamic tests for SQL-on-FHIR test definitions.
  * This function should be called from a Vitest test file.
  */
-export async function createDynamicTests(testPath: string): Promise<DynamicVitestGenerator> {
+export async function createDynamicTests(
+  testPath: string,
+): Promise<DynamicVitestGenerator> {
   const generator = new DynamicVitestGenerator();
-  
+
   // Clear any previous results
   generator.clearTestResults();
 
   // Determine if testPath is a file or directory
   const stat = statSync(testPath);
-  
+
   if (stat.isDirectory()) {
     await generator.generateTestsFromDirectory(testPath);
-  } else if (stat.isFile() && testPath.endsWith('.json')) {
+  } else if (stat.isFile() && testPath.endsWith(".json")) {
     await generator.generateTestsFromFile(testPath);
   } else {
-    throw new Error(`Invalid test path: ${testPath}. Must be a JSON file or directory containing JSON files.`);
+    throw new Error(
+      `Invalid test path: ${testPath}. Must be a JSON file or directory containing JSON files.`,
+    );
   }
 
   return generator;

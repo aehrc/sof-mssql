@@ -1,14 +1,15 @@
 /**
  * Custom Vitest reporter for SQL-on-FHIR test result collection.
- * 
+ *
  * Collects test results during Vitest execution and formats them according
  * to the FHIR sql-on-fhir-v2 test report schema. Results are stored globally
  * and can be accessed after test completion for report generation.
  */
 
-import type { Reporter, Task, File } from "vitest";
 import { writeFileSync } from "fs";
-import type { TestReport, TestReportSuite, TestReportEntry } from "./test-runner.js";
+import type { RunnerTask, RunnerTestFile } from "vitest";
+import type { Reporter } from "vitest/reporters";
+import type { TestReport, TestReportEntry } from "./runner";
 
 export interface SqlOnFhirReporterOptions {
   /** Path to write the test report JSON file */
@@ -20,7 +21,7 @@ export interface SqlOnFhirReporterOptions {
 /**
  * Custom Vitest reporter that collects SQL-on-FHIR test results.
  */
-export class SqlOnFhirReporter implements Reporter {
+class SqlOnFhirReporter implements Reporter {
   private readonly options: SqlOnFhirReporterOptions;
   private testReport: TestReport = {};
 
@@ -35,11 +36,11 @@ export class SqlOnFhirReporter implements Reporter {
   /**
    * Called when all tests have finished running.
    */
-  onFinished(files?: File[]): void {
+  onFinished(files?: RunnerTestFile[]): void {
     if (!files) return;
 
     // Collect results from global storage set by dynamic tests
-    if (typeof global !== 'undefined' && (global as any).__TEST_RESULTS__) {
+    if (typeof global !== "undefined" && (global as any).__TEST_RESULTS__) {
       this.testReport = (global as any).__TEST_RESULTS__;
     }
 
@@ -74,7 +75,7 @@ export class SqlOnFhirReporter implements Reporter {
   /**
    * Collect test results from Vitest task results as fallback.
    */
-  private collectFromVitestTasks(files: File[]): void {
+  private collectFromVitestTasks(files: RunnerTestFile[]): void {
     for (const file of files) {
       if (!file.tasks) continue;
 
@@ -82,7 +83,7 @@ export class SqlOnFhirReporter implements Reporter {
         if (task.type === "suite") {
           const suiteName = task.name;
           const suiteTests = this.collectTestsFromSuite(task);
-          
+
           if (suiteTests.length > 0) {
             this.testReport[suiteName] = {
               tests: suiteTests,
@@ -96,7 +97,7 @@ export class SqlOnFhirReporter implements Reporter {
   /**
    * Recursively collect test results from a test suite.
    */
-  private collectTestsFromSuite(suite: Task): TestReportEntry[] {
+  private collectTestsFromSuite(suite: RunnerTask): TestReportEntry[] {
     const tests: TestReportEntry[] = [];
 
     if (suite.tasks) {
@@ -123,13 +124,13 @@ export class SqlOnFhirReporter implements Reporter {
    */
   clearResults(): void {
     this.testReport = {};
-    if (typeof global !== 'undefined') {
+    if (typeof global !== "undefined") {
       (global as any).__TEST_RESULTS__ = {};
     }
   }
 
   // Optional Vitest reporter methods (can be implemented as needed)
-  onTaskUpdate?(task: Task): void {
+  onTaskUpdate?(task: RunnerTask): void {
     // Could be used for real-time result collection
   }
 
@@ -151,3 +152,5 @@ export class SqlOnFhirReporter implements Reporter {
     this.clearResults();
   }
 }
+
+export default SqlOnFhirReporter;

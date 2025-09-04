@@ -14,14 +14,11 @@ export {
   TestCase,
 } from "./types.js";
 export { ViewDefinitionParser } from "./parser.js";
-export { QueryGenerator, QueryGeneratorOptions } from "./query-generator.js";
-export {
-  FHIRPathTranspiler,
-  TranspilerContext,
-} from "./fhirpath-transpiler.js";
+export { QueryGenerator, QueryGeneratorOptions } from "./queryGenerator";
+export { Transpiler, TranspilerContext } from "./fhirpath/transpiler";
 
 import { ViewDefinitionParser } from "./parser.js";
-import { QueryGenerator, QueryGeneratorOptions } from "./query-generator.js";
+import { QueryGenerator, QueryGeneratorOptions } from "./queryGenerator";
 import { TranspilationResult, ViewDefinition } from "./types.js";
 
 /**

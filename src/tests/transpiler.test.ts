@@ -2,39 +2,42 @@
  * Tests for FHIRPath transpiler.
  */
 
-import { describe, it, expect } from "vitest";
-import { FHIRPathTranspiler, TranspilerContext } from "../src";
+import { describe, expect, it } from "vitest";
+import {
+  Transpiler,
+  TranspilerContext,
+} from "../fhirpath/transpiler.js";
 
-describe("FHIRPathTranspiler", () => {
+describe("Transpiler", () => {
   const defaultContext: TranspilerContext = {
     resourceAlias: "r",
   };
 
   describe("basic expressions", () => {
     it("should transpile simple property access", () => {
-      const result = FHIRPathTranspiler.transpile("id", defaultContext);
+      const result = Transpiler.transpile("id", defaultContext);
       expect(result).toBe("r.id");
     });
 
     it("should transpile string literals", () => {
-      const result = FHIRPathTranspiler.transpile("'test'", defaultContext);
+      const result = Transpiler.transpile("'test'", defaultContext);
       expect(result).toBe("'test'");
     });
 
     it("should transpile number literals", () => {
-      const result = FHIRPathTranspiler.transpile("123", defaultContext);
+      const result = Transpiler.transpile("123", defaultContext);
       expect(result).toBe("123");
     });
 
     it("should transpile boolean literals", () => {
-      const result = FHIRPathTranspiler.transpile("true", defaultContext);
+      const result = Transpiler.transpile("true", defaultContext);
       expect(result).toBe("1");
     });
   });
 
   describe("property navigation", () => {
     it("should transpile nested property access", () => {
-      const result = FHIRPathTranspiler.transpile(
+      const result = Transpiler.transpile(
         "name.family",
         defaultContext,
       );
@@ -46,7 +49,7 @@ describe("FHIRPathTranspiler", () => {
 
   describe("functions", () => {
     it("should transpile exists() function", () => {
-      const result = FHIRPathTranspiler.transpile(
+      const result = Transpiler.transpile(
         "id.exists()",
         defaultContext,
       );
@@ -54,7 +57,7 @@ describe("FHIRPathTranspiler", () => {
     });
 
     it("should transpile getResourceKey() function", () => {
-      const result = FHIRPathTranspiler.transpile(
+      const result = Transpiler.transpile(
         "getResourceKey()",
         defaultContext,
       );
@@ -62,7 +65,7 @@ describe("FHIRPathTranspiler", () => {
     });
 
     it("should transpile first() function", () => {
-      const result = FHIRPathTranspiler.transpile(
+      const result = Transpiler.transpile(
         "name.first()",
         defaultContext,
       );
@@ -73,7 +76,7 @@ describe("FHIRPathTranspiler", () => {
 
   describe("operators", () => {
     it("should transpile equality operators", () => {
-      const result = FHIRPathTranspiler.transpile(
+      const result = Transpiler.transpile(
         "gender = 'male'",
         defaultContext,
       );
@@ -82,7 +85,7 @@ describe("FHIRPathTranspiler", () => {
     });
 
     it("should transpile logical operators", () => {
-      const result = FHIRPathTranspiler.transpile(
+      const result = Transpiler.transpile(
         "active and gender.exists()",
         defaultContext,
       );
@@ -94,29 +97,29 @@ describe("FHIRPathTranspiler", () => {
   describe("error handling", () => {
     it("should throw error for unsupported functions", () => {
       expect(() =>
-        FHIRPathTranspiler.transpile("unsupportedFunction()", defaultContext),
+        Transpiler.transpile("unsupportedFunction()", defaultContext),
       ).toThrow("Unsupported FHIRPath function");
     });
 
     it("should throw error for invalid expressions", () => {
       expect(() =>
-        FHIRPathTranspiler.transpile("invalid syntax...", defaultContext),
+        Transpiler.transpile("invalid syntax...", defaultContext),
       ).toThrow("Failed to transpile FHIRPath expression");
     });
   });
 
   describe("inferSqlType", () => {
     it("should infer correct SQL types", () => {
-      expect(FHIRPathTranspiler.inferSqlType("string")).toBe("NVARCHAR(MAX)");
-      expect(FHIRPathTranspiler.inferSqlType("boolean")).toBe("BIT");
-      expect(FHIRPathTranspiler.inferSqlType("integer")).toBe("INT");
-      expect(FHIRPathTranspiler.inferSqlType("decimal")).toBe("DECIMAL(18,6)");
-      expect(FHIRPathTranspiler.inferSqlType("date")).toBe("DATETIME2");
+      expect(Transpiler.inferSqlType("string")).toBe("NVARCHAR(MAX)");
+      expect(Transpiler.inferSqlType("boolean")).toBe("BIT");
+      expect(Transpiler.inferSqlType("integer")).toBe("INT");
+      expect(Transpiler.inferSqlType("decimal")).toBe("DECIMAL(18,6)");
+      expect(Transpiler.inferSqlType("date")).toBe("DATETIME2");
     });
 
     it("should default to NVARCHAR(MAX) for unknown types", () => {
-      expect(FHIRPathTranspiler.inferSqlType("unknown")).toBe("NVARCHAR(MAX)");
-      expect(FHIRPathTranspiler.inferSqlType()).toBe("NVARCHAR(MAX)");
+      expect(Transpiler.inferSqlType("unknown")).toBe("NVARCHAR(MAX)");
+      expect(Transpiler.inferSqlType()).toBe("NVARCHAR(MAX)");
     });
   });
 });

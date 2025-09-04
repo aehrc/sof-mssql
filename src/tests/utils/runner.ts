@@ -28,9 +28,9 @@
  */
 
 import { config as MSSQLConfig, ConnectionPool, Request } from "mssql";
-import { SqlOnFhir } from "./index.js";
-import { ViewDefinitionParser } from "./parser.js";
-import { TestCase, TestSuite } from "./types.js";
+import { SqlOnFhir } from "../../index.js";
+import { ViewDefinitionParser } from "../../parser";
+import { TestCase, TestSuite } from "../../types";
 
 /**
  * Configuration for the TestRunner database connection and table setup.

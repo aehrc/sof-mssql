@@ -1,14 +1,14 @@
 /**
  * Shared utilities for SQL-on-FHIR Vitest tests.
- * 
+ *
  * Provides functions for ViewDefinition transpilation, SQL execution,
  * result comparison, and other common test operations.
  */
 
 import { Request } from "mssql";
-import { SqlOnFhir } from "../../src/index.js";
-import { ViewDefinition } from "../../src/types.js";
-import { getDatabasePool } from "../setup/database.js";
+import { SqlOnFhir } from "../../index";
+import { ViewDefinition } from "../../types";
+import { getDatabasePool } from "./database";
 
 let sqlOnFhirInstance: SqlOnFhir | null = null;
 
@@ -29,11 +29,13 @@ function getSqlOnFhirInstance(): SqlOnFhir {
 
 /**
  * Execute a ViewDefinition against the database and return the results.
- * 
+ *
  * @param viewDefinition - The ViewDefinition to transpile and execute
  * @returns Array of result objects
  */
-export async function executeViewDefinition(viewDefinition: ViewDefinition | any): Promise<any[]> {
+export async function executeViewDefinition(
+  viewDefinition: ViewDefinition | any,
+): Promise<any[]> {
   try {
     // Get database connection
     const pool = getDatabasePool();
@@ -46,17 +48,19 @@ export async function executeViewDefinition(viewDefinition: ViewDefinition | any
     // Execute the query
     const request = new Request(pool);
     const queryResult = await request.query(sql);
-    
+
     // Parse JSON strings in results and return
     return parseJsonStringsInResults(queryResult.recordset);
   } catch (error) {
-    throw new Error(`Failed to execute ViewDefinition: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to execute ViewDefinition: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
 /**
  * Compare actual results with expected results, handling various data types and formats.
- * 
+ *
  * @param actualResults - The actual query results
  * @param expectedResults - The expected results from the test case
  * @param expectedColumns - Optional array of expected column names
@@ -65,7 +69,7 @@ export async function executeViewDefinition(viewDefinition: ViewDefinition | any
 export function compareResults(
   actualResults: any[],
   expectedResults: any[],
-  expectedColumns?: string[]
+  expectedColumns?: string[],
 ): boolean {
   // Check column ordering if specified
   if (expectedColumns && expectedColumns.length > 0) {
@@ -78,8 +82,12 @@ export function compareResults(
   }
 
   // Sort both arrays to ignore row ordering
-  const sortedActual = [...actualResults].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-  const sortedExpected = [...expectedResults].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  const sortedActual = [...actualResults].sort((a, b) =>
+    JSON.stringify(a).localeCompare(JSON.stringify(b)),
+  );
+  const sortedExpected = [...expectedResults].sort((a, b) =>
+    JSON.stringify(a).localeCompare(JSON.stringify(b)),
+  );
 
   // Check if lengths match
   if (sortedActual.length !== sortedExpected.length) {
@@ -146,7 +154,7 @@ function arraysEqual<T>(a: T[], b: T[]): boolean {
 
 /**
  * Parse JSON strings in query results into actual arrays/objects.
- * 
+ *
  * SQL Server may return some values as JSON strings that need to be parsed.
  */
 function parseJsonStringsInResults(results: any[]): any[] {

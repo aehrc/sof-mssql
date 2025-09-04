@@ -2,8 +2,8 @@
  * Tests for ViewDefinition parser.
  */
 
-import { describe, it, expect } from "vitest";
-import { ViewDefinitionParser } from "../src";
+import { describe, expect, it } from "vitest";
+import { ViewDefinitionParser } from "../parser";
 
 describe("ViewDefinitionParser", () => {
   const validViewDefinition = {

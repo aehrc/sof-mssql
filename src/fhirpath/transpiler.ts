@@ -4,14 +4,14 @@
  */
 
 import { CharStreams, CommonTokenStream } from "antlr4ts";
-import { fhirpathLexer } from "./generated/grammar/fhirpathLexer";
-import { fhirpathParser } from "./generated/grammar/fhirpathParser";
-import { FHIRPathToTSqlVisitor, TranspilerContext } from "./fhirpath-visitor";
+import { fhirpathLexer } from "../generated/grammar/fhirpathLexer";
+import { fhirpathParser } from "../generated/grammar/fhirpathParser";
+import { FHIRPathToTSqlVisitor, TranspilerContext } from "./visitor";
 
 // Re-export TranspilerContext from visitor
-export { TranspilerContext } from "./fhirpath-visitor";
+export { TranspilerContext } from "./visitor";
 
-export class FHIRPathTranspiler {
+export class Transpiler {
   /**
    * Transpile a FHIRPath expression to T-SQL.
    */
@@ -19,27 +19,27 @@ export class FHIRPathTranspiler {
     try {
       // Create ANTLR input stream
       const inputStream = CharStreams.fromString(expression);
-      
+
       // Create lexer
       const lexer = new fhirpathLexer(inputStream);
       const tokenStream = new CommonTokenStream(lexer);
-      
+
       // Create parser
       const parser = new fhirpathParser(tokenStream);
-      
+
       // Remove default error listeners to avoid console output
       parser.removeErrorListeners();
-      
+
       // Parse the entire expression
       const tree = parser.entireExpression();
-      
+
       // Check for parse errors by examining if we have error nodes or syntax errors
       if (parser.numberOfSyntaxErrors > 0) {
         throw new Error(
-          `Failed to transpile FHIRPath expression '${expression}': Syntax error`
+          `Failed to transpile FHIRPath expression '${expression}': Syntax error`,
         );
       }
-      
+
       // Create visitor and visit the parse tree
       const visitor = new FHIRPathToTSqlVisitor(context);
       return visitor.visit(tree);

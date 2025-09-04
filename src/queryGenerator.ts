@@ -4,9 +4,9 @@
  */
 
 import {
-  FHIRPathTranspiler,
+  Transpiler,
   TranspilerContext,
-} from "./fhirpath-transpiler.js";
+} from "./fhirpath/transpiler.js";
 import {
   ColumnInfo,
   TranspilationResult,
@@ -320,12 +320,12 @@ export class QueryGenerator {
         expression = this.generateSingleValueExpression(column.path, context);
       } else {
         // Default behaviour (collection not specified)
-        expression = FHIRPathTranspiler.transpile(column.path, context);
+        expression = Transpiler.transpile(column.path, context);
       }
 
       // Handle type casting if specified
       if (column.type && column.collection !== true) {
-        const sqlType = FHIRPathTranspiler.inferSqlType(column.type);
+        const sqlType = Transpiler.inferSqlType(column.type);
         if (sqlType !== "NVARCHAR(MAX)") {
           return `CAST(${expression} AS ${sqlType})`;
         }
@@ -408,7 +408,7 @@ export class QueryGenerator {
     context: TranspilerContext,
   ): string {
     // For collection=false, use standard transpilation which returns single values
-    return FHIRPathTranspiler.transpile(path, context);
+    return Transpiler.transpile(path, context);
   }
 
   /**
@@ -443,7 +443,7 @@ export class QueryGenerator {
 
     for (const where of whereConditions) {
       try {
-        const condition = FHIRPathTranspiler.transpile(where.path, context);
+        const condition = Transpiler.transpile(where.path, context);
 
         // Check if this looks like a simple boolean field reference that needs to be cast
         // Only apply this to simple field references, not complex expressions
@@ -639,7 +639,7 @@ export class QueryGenerator {
         for (const column of select.column) {
           columns.push({
             name: column.name,
-            type: FHIRPathTranspiler.inferSqlType(column.type),
+            type: Transpiler.inferSqlType(column.type),
             nullable: true, // FHIR data is generally nullable
             description: column.description,
           });
