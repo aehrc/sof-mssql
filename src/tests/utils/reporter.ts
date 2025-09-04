@@ -6,7 +6,8 @@
  * and can be accessed after test completion for report generation.
  */
 
-import { writeFileSync } from "fs";
+import { writeFileSync, mkdirSync } from "fs";
+import { dirname } from "path";
 import type { RunnerTestFile, RunnerTask, RunnerTaskResultPack, RunnerTaskEventPack } from "vitest";
 import type { Reporter } from "vitest/reporters";
 import type { TestReport, TestReportEntry } from "./runner";
@@ -27,7 +28,7 @@ class SqlOnFhirReporter implements Reporter {
 
   constructor(options: SqlOnFhirReporterOptions = {}) {
     this.options = {
-      outputPath: "test-report.json",
+      outputPath: "out/test-report.json",
       autoWriteReport: true,
       ...options,
     };
@@ -66,6 +67,10 @@ class SqlOnFhirReporter implements Reporter {
    */
   writeReport(outputPath: string): void {
     try {
+      // Ensure the output directory exists
+      const outputDir = dirname(outputPath);
+      mkdirSync(outputDir, { recursive: true });
+      
       const reportJson = JSON.stringify(this.testReport, null, 2);
       writeFileSync(outputPath, reportJson, "utf8");
     } catch (error) {
@@ -75,13 +80,14 @@ class SqlOnFhirReporter implements Reporter {
 
   /**
    * Collect test results from Vitest task results as fallback.
+   * Only collects from SQL on FHIR compliance tests.
    */
   private collectFromVitestTasks(files: RunnerTestFile[]): void {
     for (const file of files) {
       if (!file.tasks) continue;
 
       for (const task of file.tasks) {
-        if (task.type === "suite") {
+        if (task.type === "suite" && task.name === "SQL on FHIR compliance tests") {
           const suiteName = task.name;
           const suiteTests = this.collectTestsFromSuite(task);
 
