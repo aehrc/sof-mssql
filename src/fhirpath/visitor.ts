@@ -402,9 +402,8 @@ export class FHIRPathToTSqlVisitor
   }
 
   visitQuantity(ctx: QuantityContext): string {
-    const number = ctx.NUMBER().text;
     // For now, just return the number - unit handling would be more complex
-    return number;
+    return ctx.NUMBER().text;
   }
 
   visitIdentifier(ctx: IdentifierContext): string {
@@ -478,47 +477,51 @@ export class FHIRPathToTSqlVisitor
 
     // Special handling for first() function to match expected format
     if (functionName === "first") {
-      // Check if the base is a simple JSON_VALUE call that we can optimize
-      const simpleJsonMatch = /^JSON_VALUE\(([^,]+),\s*'([^']+)'\)$/.exec(base);
-      if (simpleJsonMatch) {
-        const source = simpleJsonMatch[1];
-        const path = simpleJsonMatch[2];
-        return `JSON_VALUE(${source}, '${path}[0]')`;
-      } else if (
-        !base.includes("JSON_VALUE") &&
-        !base.includes("EXISTS") &&
-        !base.includes("SELECT")
-      ) {
-        // Simple identifier like 'name'
-        return `JSON_VALUE(${this.context.resourceAlias}.json, '$.${base}[0]')`;
-      } else {
-        return `JSON_VALUE(${base}, '$[0]')`;
-      }
+      return this.handleFirstFunctionInvocation(base);
     }
 
-    // Create new context with the base as iteration context
-    let newContext: TranspilerContext;
+    // Create new context and delegate to function handler
+    const newContext = this.createNewIterationContext(base);
+    const visitor = new FHIRPathToTSqlVisitor(newContext);
+    return visitor.executeFunctionHandler(functionName, args);
+  }
 
+  private handleFirstFunctionInvocation(base: string): string {
+    // Check if the base is a simple JSON_VALUE call that we can optimize
+    const simpleJsonMatch = /^JSON_VALUE\(([^,]+),\s*'([^']+)'\)$/.exec(base);
+    if (simpleJsonMatch) {
+      const source = simpleJsonMatch[1];
+      const path = simpleJsonMatch[2];
+      return `JSON_VALUE(${source}, '${path}[0]')`;
+    } else if (
+      !base.includes("JSON_VALUE") &&
+      !base.includes("EXISTS") &&
+      !base.includes("SELECT")
+    ) {
+      // Simple identifier like 'name'
+      return `JSON_VALUE(${this.context.resourceAlias}.json, '$.${base}[0]')`;
+    } else {
+      return `JSON_VALUE(${base}, '$[0]')`;
+    }
+  }
+
+  private createNewIterationContext(base: string): TranspilerContext {
     if (
       !base.includes("JSON_VALUE") &&
       !base.includes("EXISTS") &&
       !base.includes("SELECT")
     ) {
       // Simple identifier like 'name' - construct proper JSON path
-      newContext = {
+      return {
         ...this.context,
         iterationContext: `JSON_QUERY(${this.context.resourceAlias}.json, '$.${base}')`,
       };
     } else {
-      newContext = {
+      return {
         ...this.context,
         iterationContext: base,
       };
     }
-
-    // For other functions, use the visitor approach
-    const visitor = new FHIRPathToTSqlVisitor(newContext);
-    return visitor.executeFunctionHandler(functionName, args);
   }
 
   private getParameterList(paramListCtx: ParamListContext): string[] {
@@ -794,9 +797,7 @@ export class FHIRPathToTSqlVisitor
     _functionName: string,
     _args: string[],
   ): string {
-    const base =
-      this.context.iterationContext ?? `${this.context.resourceAlias}.json`;
     // Simplified implementation - return the value as-is
-    return base;
+    return this.context.iterationContext ?? `${this.context.resourceAlias}.json`;
   }
 }

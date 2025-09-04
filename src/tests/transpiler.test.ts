@@ -104,7 +104,7 @@ describe("Transpiler", () => {
     it("should throw error for invalid expressions", () => {
       expect(() =>
         Transpiler.transpile("invalid syntax...", defaultContext),
-      ).toThrow("Failed to transpile FHIRPath expression");
+      ).toThrow("Syntax error in FHIRPath expression");
     });
   });
 

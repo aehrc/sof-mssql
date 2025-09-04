@@ -5,7 +5,7 @@
 
 import { CharStreams, CommonTokenStream } from "antlr4ts";
 import { fhirpathLexer } from "../generated/grammar/fhirpathLexer";
-import { fhirpathParser } from "../generated/grammar/fhirpathParser";
+import { EntireExpressionContext, fhirpathParser } from "../generated/grammar/fhirpathParser";
 import { FHIRPathToTSqlVisitor, TranspilerContext } from "./visitor";
 
 // Re-export TranspilerContext from visitor
@@ -16,38 +16,46 @@ export class Transpiler {
    * Transpile a FHIRPath expression to T-SQL.
    */
   static transpile(expression: string, context: TranspilerContext): string {
+    // Check for syntax errors first, before any try-catch
+    const parseResult = this.parseExpression(expression);
+    if (!parseResult.success || !parseResult.tree) {
+      throw new Error(`Syntax error in FHIRPath expression '${expression}'`);
+    }
+
     try {
-      // Create ANTLR input stream
-      const inputStream = CharStreams.fromString(expression);
-
-      // Create lexer
-      const lexer = new fhirpathLexer(inputStream);
-      const tokenStream = new CommonTokenStream(lexer);
-
-      // Create parser
-      const parser = new fhirpathParser(tokenStream);
-
-      // Remove default error listeners to avoid console output
-      parser.removeErrorListeners();
-
-      // Parse the entire expression
-      const tree = parser.entireExpression();
-
-      // Check for parse errors by examining if we have error nodes or syntax errors
-      if (parser.numberOfSyntaxErrors > 0) {
-        throw new Error(
-          `Failed to transpile FHIRPath expression '${expression}': Syntax error`,
-        );
-      }
-
       // Create visitor and visit the parse tree
       const visitor = new FHIRPathToTSqlVisitor(context);
-      return visitor.visit(tree);
+      return visitor.visit(parseResult.tree);
     } catch (error) {
       throw new Error(
         `Failed to transpile FHIRPath expression '${expression}': ${error}`,
       );
     }
+  }
+
+  private static parseExpression(expression: string): { success: boolean; tree: EntireExpressionContext | null } {
+    // Create ANTLR input stream
+    const inputStream = CharStreams.fromString(expression);
+
+    // Create lexer
+    const lexer = new fhirpathLexer(inputStream);
+    const tokenStream = new CommonTokenStream(lexer);
+
+    // Create parser
+    const parser = new fhirpathParser(tokenStream);
+
+    // Remove default error listeners to avoid console output
+    parser.removeErrorListeners();
+
+    // Parse the entire expression
+    const tree = parser.entireExpression();
+
+    // Check for parse errors
+    if (parser.numberOfSyntaxErrors > 0) {
+      return { success: false, tree: null };
+    }
+
+    return { success: true, tree };
   }
 
   /**
