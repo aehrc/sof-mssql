@@ -8,6 +8,7 @@
  * The test path is provided via the SQLONFHIR_TEST_PATH environment variable.
  */
 
+import { describe } from "vitest";
 import { createDynamicTests } from "./utils/generator";
 
 // Get test path from environment variable
@@ -16,9 +17,11 @@ const testPath = process.env.SQLONFHIR_TEST_PATH;
 if (!testPath) {
   throw new Error(
     "SQLONFHIR_TEST_PATH environment variable is required. " +
-      "Set it to a SQL-on-FHIR JSON test file or directory containing test files.",
+      "Set it to a SQL on FHIR JSON test file or directory containing test files.",
   );
 }
 
-// Create dynamic tests
-await createDynamicTests(testPath);
+// Create dynamic tests within a describe block
+describe("SQL on FHIR compliance tests", async () => {
+  await createDynamicTests(testPath);
+});
