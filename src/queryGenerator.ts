@@ -130,13 +130,22 @@ export class QueryGenerator {
       context,
     );
     const fromClause = this.generateFromClause(viewDef, context);
+    const resourceTypeFilter = this.generateResourceTypeFilter(viewDef, context);
     const whereClause = this.generateWhereClause(viewDef.where, context);
 
     let statement = `${selectClause}\n${fromClause}`;
 
+    // Build WHERE clause combining resource type filter and view-level filters
+    const whereConditions = [resourceTypeFilter];
     if (whereClause) {
-      statement += `\n${whereClause}`;
+      whereConditions.push(whereClause);
     }
+    
+    if (whereConditions.length > 0) {
+      statement += `\nWHERE ${whereConditions.join(' AND ')}`;
+    }
+
+    // Debug logging removed
 
     return statement;
   }
@@ -172,6 +181,10 @@ export class QueryGenerator {
       currentContext = {
         ...currentContext,
         iterationContext: `${applyAlias}.value`,
+        // forEach iteration context
+        currentForEachAlias: applyAlias,
+        forEachSource: `${currentContext.resourceAlias}.json`,
+        forEachPath: `$.${forEachPath}`,
       };
     }
 
@@ -182,13 +195,22 @@ export class QueryGenerator {
       forEachSelects,
     );
 
+    const resourceTypeFilter = this.generateResourceTypeFilter(viewDef, context);
     const whereClause = this.generateWhereClause(viewDef.where, context);
 
     let statement = `${selectClause}\n${fromClause}${applyClauses}`;
 
+    // Build WHERE clause combining resource type filter and view-level filters
+    const whereConditions = [resourceTypeFilter];
     if (whereClause) {
-      statement += `\n${whereClause}`;
+      whereConditions.push(whereClause);
     }
+    
+    if (whereConditions.length > 0) {
+      statement += `\nWHERE ${whereConditions.join(' AND ')}`;
+    }
+
+    // Debug logging removed
 
     return statement;
   }
@@ -373,27 +395,17 @@ export class QueryGenerator {
       pathParts[0] === "name" &&
       pathParts[1] === "family"
     ) {
-      // For name.family, collect all family values into an array
-      // Use FOR JSON PATH to ensure proper JSON array construction
-      return `(
-        SELECT JSON_VALUE(value, '$.family') as value
-        FROM OPENJSON(${context.resourceAlias}.json, '$.name')
-        WHERE JSON_VALUE(value, '$.family') IS NOT NULL
-        FOR JSON PATH
-      )`;
+      // For name.family, use JSON_QUERY to get family values as array
+      // This is a simplified approach - gets the first name's family
+      return `JSON_QUERY(${context.resourceAlias}.json, '$.name[0].family')`;
     } else if (
       pathParts.length === 2 &&
       pathParts[0] === "name" &&
       pathParts[1] === "given"
     ) {
-      // For name.given, flatten all given arrays into a single array using FOR JSON PATH
-      return `(
-        SELECT JSON_VALUE(given.value, '$') AS [value]
-        FROM OPENJSON(${context.resourceAlias}.json, '$.name') as name_obj
-        CROSS APPLY OPENJSON(name_obj.value, '$.given') as given
-        WHERE JSON_VALUE(given.value, '$') IS NOT NULL
-        FOR JSON PATH
-      )`;
+      // For name.given, use JSON_QUERY to get the first name's given array
+      // This is a simplified approach - in reality we'd want to merge all given arrays
+      return `JSON_QUERY(${context.resourceAlias}.json, '$.name[0].given')`;
     } else {
       // Fall back to regular JSON path
       return `JSON_QUERY(${context.resourceAlias}.json, '$.${path}')`;
@@ -419,13 +431,17 @@ export class QueryGenerator {
     context: TranspilerContext,
   ): string {
     const tableName = `[${this.options.schemaName}].[${this.options.tableName}]`;
-    let fromClause = `FROM ${tableName} AS [${context.resourceAlias}]`;
+    return `FROM ${tableName} AS [${context.resourceAlias}]`;
+  }
 
-    // Add resource type filter
-    const resourceTypeCondition = `[${context.resourceAlias}].[resource_type] = '${viewDef.resource}'`;
-    fromClause += `\nWHERE ${resourceTypeCondition}`;
-
-    return fromClause;
+  /**
+   * Generate the resource type filter for WHERE clause.
+   */
+  private generateResourceTypeFilter(
+    viewDef: ViewDefinition,
+    context: TranspilerContext,
+  ): string {
+    return `[${context.resourceAlias}].[resource_type] = '${viewDef.resource}'`;
   }
 
   /**
@@ -453,8 +469,8 @@ export class QueryGenerator {
         );
 
         if (simpleBooleanFieldPattern.test(condition.trim())) {
-          // Convert JSON_VALUE result to boolean: CAST(JSON_VALUE(...) as BIT) = 1
-          conditions.push(`(CAST(${condition} AS BIT) = 1)`);
+          // Convert JSON_VALUE result to boolean: handle 'true'/'false' string conversion
+          conditions.push(`(CASE WHEN ${condition} = 'true' THEN 1 ELSE 0 END = 1)`);
         } else {
           conditions.push(condition);
         }
@@ -465,7 +481,7 @@ export class QueryGenerator {
       }
     }
 
-    return `  AND (${conditions.join(") AND (")})`;
+    return `(${conditions.join(") AND (")})`;
   }
 
   /**

@@ -146,18 +146,21 @@ export async function cleanupTestData(): Promise<void> {
       return;
     }
 
-    // Use TRUNCATE for faster cleanup
-    try {
-      const truncateRequest = new Request(globalPool);
-      await truncateRequest.query(`TRUNCATE TABLE ${tableName}`);
-    } catch (truncateError) {
-      // Fall back to DELETE if TRUNCATE fails
-      const deleteRequest = new Request(globalPool);
-      await deleteRequest.query(`DELETE FROM ${tableName}`);
+    // Use DELETE instead of TRUNCATE to avoid issues with foreign keys and ensure reliability
+    const deleteRequest = new Request(globalPool);
+    await deleteRequest.query(`DELETE FROM ${tableName}`);
+    
+    // Verify cleanup was successful
+    const verifyRequest = new Request(globalPool);
+    const verifyResult = await verifyRequest.query(`SELECT COUNT(*) as remaining_count FROM ${tableName}`);
+    const remainingCount = verifyResult.recordset[0]?.remaining_count;
+    
+    if (remainingCount > 0) {
+      throw new Error(`Failed to clean up all test data. ${remainingCount} records remaining.`);
     }
   } catch (error) {
-    // Log warning but don't fail the test
-    console.warn(`Warning: Failed to clean up test data: ${error instanceof Error ? error.message : String(error)}`);
+    // Don't silently ignore cleanup failures - they cause subsequent test failures
+    throw new Error(`Failed to clean up test data: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
