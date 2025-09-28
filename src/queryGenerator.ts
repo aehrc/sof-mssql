@@ -387,7 +387,6 @@ export class QueryGenerator {
     path: string,
     context: TranspilerContext,
   ): string {
-    // Generate simple JSON strings that can be parsed by the test runner
     const pathParts = path.split(".");
 
     if (
@@ -395,19 +394,33 @@ export class QueryGenerator {
       pathParts[0] === "name" &&
       pathParts[1] === "family"
     ) {
-      // For name.family, use JSON_QUERY to get family values as array
-      // This is a simplified approach - gets the first name's family
-      return `JSON_QUERY(${context.resourceAlias}.json, '$.name[0].family')`;
+      // For name.family with collection=true, we need to get all family values from all name objects
+      // family is a single string property in each name object, not an array
+      return `(
+        SELECT CASE
+          WHEN COUNT(JSON_VALUE(names.value, '$.family')) = 0 THEN JSON_QUERY('[]')
+          ELSE JSON_QUERY('[' + STRING_AGG(CONCAT('"', JSON_VALUE(names.value, '$.family'), '"'), ',') + ']')
+        END
+        FROM OPENJSON(${context.resourceAlias}.json, '$.name') AS names
+        WHERE JSON_VALUE(names.value, '$.family') IS NOT NULL
+      )`;
     } else if (
       pathParts.length === 2 &&
       pathParts[0] === "name" &&
       pathParts[1] === "given"
     ) {
-      // For name.given, use JSON_QUERY to get the first name's given array
-      // This is a simplified approach - in reality we'd want to merge all given arrays
-      return `JSON_QUERY(${context.resourceAlias}.json, '$.name[0].given')`;
+      // For name.given with collection=true, flatten all given arrays into one array
+      return `(
+        SELECT CASE
+          WHEN COUNT(n.value) = 0 THEN JSON_QUERY('[]')
+          ELSE JSON_QUERY('[' + STRING_AGG(CONCAT('"', n.value, '"'), ',') + ']')
+        END
+        FROM OPENJSON(${context.resourceAlias}.json, '$.name') AS names
+        CROSS APPLY OPENJSON(names.value, '$.given') AS n
+        WHERE n.value IS NOT NULL
+      )`;
     } else {
-      // Fall back to regular JSON path
+      // For other paths, try to use JSON_QUERY to get the array directly
       return `JSON_QUERY(${context.resourceAlias}.json, '$.${path}')`;
     }
   }

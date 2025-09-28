@@ -45,6 +45,9 @@ export async function executeViewDefinition(
     const transpilationResult = sqlOnFhir.transpile(viewDefinition);
     const sql = transpilationResult.sql;
 
+    // Log the generated SQL for debugging
+    console.log("Generated SQL:", sql);
+
     // Execute the query
     const request = new Request(pool);
     const queryResult = await request.query(sql);
