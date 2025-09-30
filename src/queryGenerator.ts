@@ -3,10 +3,7 @@
  * Generates SQL queries that can be executed against MS SQL Server.
  */
 
-import {
-  Transpiler,
-  TranspilerContext,
-} from "./fhirpath/transpiler.js";
+import { Transpiler, TranspilerContext } from "./fhirpath/transpiler.js";
 import {
   ColumnInfo,
   TranspilationResult,
@@ -14,7 +11,7 @@ import {
   ViewDefinitionColumn,
   ViewDefinitionConstant,
   ViewDefinitionSelect,
-  ViewDefinitionWhere,
+  ViewDefinitionWhere
 } from "./types.js";
 
 interface SelectCombination {
@@ -103,22 +100,59 @@ export class QueryGenerator {
     viewDef: ViewDefinition,
     context: TranspilerContext,
   ): string {
-    // Check if we have forEach operations that need CROSS APPLY
-    // Only find top-level forEach - nested forEach are handled recursively
-    const topLevelForEachSelects = combination.selects.filter(
-      (s) => s.forEach ?? s.forEachOrNull,
-    );
+    // Check if we have ANY forEach operations (including nested) that need CROSS APPLY
+    const hasForEach = this.hasForEachInSelects(combination.selects);
 
-    if (topLevelForEachSelects.length > 0) {
-      return this.generateForEachStatement(
-        combination,
-        viewDef,
-        context,
-        topLevelForEachSelects,
-      );
+    if (hasForEach) {
+      return this.generateForEachStatement(combination, viewDef, context);
     } else {
       return this.generateSimpleStatement(combination, viewDef, context);
     }
+  }
+
+  /**
+   * Check if any select in the tree has forEach operations.
+   */
+  private hasForEachInSelects(selects: ViewDefinitionSelect[]): boolean {
+    for (const select of selects) {
+      if (this.selectHasForEach(select)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Check if a single select has forEach operations (including nested).
+   */
+  private selectHasForEach(select: ViewDefinitionSelect): boolean {
+    // Check direct forEach
+    if (select.forEach || select.forEachOrNull) {
+      return true;
+    }
+
+    // Check nested selects
+    if (select.select && this.hasForEachInSelects(select.select)) {
+      return true;
+    }
+
+    // Check unionAll options
+    return !!(select.unionAll && this.unionAllHasForEach(select.unionAll));
+  }
+
+  /**
+   * Check if any unionAll option has forEach operations.
+   */
+  private unionAllHasForEach(unionAllOptions: ViewDefinitionSelect[]): boolean {
+    for (const unionOption of unionAllOptions) {
+      if (unionOption.forEach || unionOption.forEachOrNull) {
+        return true;
+      }
+      if (unionOption.select && this.hasForEachInSelects(unionOption.select)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -161,11 +195,13 @@ export class QueryGenerator {
     combination: SelectCombination,
     viewDef: ViewDefinition,
     context: TranspilerContext,
-    forEachSelects: ViewDefinitionSelect[],
   ): string {
     const fromClause = this.generateFromClause(context);
-    const forEachContextMap = this.buildForEachContextMap(forEachSelects, context);
-    const applyClauses = this.buildApplyClauses(forEachContextMap, combination);
+    const { forEachContextMap, topLevelForEach } = this.buildForEachContextMap(
+      combination.selects,
+      context,
+    );
+    const applyClauses = this.buildApplyClauses(forEachContextMap, topLevelForEach, combination);
     const selectClause = this.generateForEachSelectClause(
       combination,
       context,
@@ -182,17 +218,24 @@ export class QueryGenerator {
   }
 
   /**
-   * Build the forEach context map by generating contexts for all forEach in original order.
+   * Build the forEach context map by generating contexts for all forEach.
    * Only processes top-level forEach - nested forEach are handled recursively.
    */
   private buildForEachContextMap(
-    topLevelForEachSelects: ViewDefinitionSelect[],
+    selects: ViewDefinitionSelect[],
     context: TranspilerContext,
-  ): Map<ViewDefinitionSelect, TranspilerContext> {
+  ): {
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>;
+    topLevelForEach: ViewDefinitionSelect[];
+  } {
     const forEachContextMap = new Map<ViewDefinitionSelect, TranspilerContext>();
     const counterState = { value: 0 };
 
-    for (const select of topLevelForEachSelects) {
+    // Collect all top-level forEach (including those in nested select arrays of non-forEach selects)
+    const topLevelForEach = this.collectTopLevelForEach(selects);
+
+    // Process each top-level forEach
+    for (const select of topLevelForEach) {
       this.generateForEachClauses(
         select,
         context.resourceAlias + ".json",
@@ -202,22 +245,48 @@ export class QueryGenerator {
       );
     }
 
-    return forEachContextMap;
+    return { forEachContextMap, topLevelForEach };
+  }
+
+  /**
+   * Collect all forEach that should be treated as top-level.
+   * This includes:
+   * 1. Selects that directly have forEach
+   * 2. forEach inside select arrays of non-forEach selects
+   */
+  private collectTopLevelForEach(
+    selects: ViewDefinitionSelect[],
+  ): ViewDefinitionSelect[] {
+    const topLevelForEach: ViewDefinitionSelect[] = [];
+
+    for (const select of selects) {
+      if (select.forEach || select.forEachOrNull) {
+        // This is a direct forEach
+        topLevelForEach.push(select);
+      } else if (select.select) {
+        // This is a non-forEach select with nested selects
+        // Any forEach in these nested selects should be treated as top-level
+        for (const nestedSelect of select.select) {
+          if (nestedSelect.forEach || nestedSelect.forEachOrNull) {
+            topLevelForEach.push(nestedSelect);
+          }
+        }
+      }
+    }
+
+    return topLevelForEach;
   }
 
   /**
    * Build CROSS APPLY clauses in reverse order for forEach processing.
-   * Only processes top-level forEach - nested forEach are handled recursively.
+   * Only processes top-level forEach - nested forEach clauses are generated recursively.
    */
   private buildApplyClauses(
     forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+    topLevelForEach: ViewDefinitionSelect[],
     combination: SelectCombination,
   ): string {
-    // Only process top-level forEach from combination.selects
-    const topLevelForEach = combination.selects.filter(
-      (s) => s.forEach ?? s.forEachOrNull,
-    );
-
+    // Generate CROSS APPLY clauses in reverse order for top-level forEach only
     return [...topLevelForEach]
       .reverse()
       .map((select) => {
