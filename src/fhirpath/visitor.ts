@@ -493,12 +493,18 @@ export class FHIRPathToTSqlVisitor
           "contact",
         ];
         const pathParts = existingPath.split(".");
-        const isInIterationContext = source.includes("forEach_");
+        // Check if we're accessing one of the forEach paths directly
+        // In that case, don't add [0] because the forEach handles the iteration
+        const isForEachPath =
+          this.context.forEachPath &&
+          pathParts.length >= 2 &&
+          this.context.forEachPath.includes(pathParts[1]);
+
         if (
           pathParts.length >= 2 &&
           knownArrayFields.includes(pathParts[1]) &&
           !existingPath.includes("[") &&
-          !isInIterationContext
+          !isForEachPath
         ) {
           const newPath = `${pathParts[0]}.${pathParts[1]}[0].${memberName}`;
           return `JSON_VALUE(${source}, '${newPath}')`;
