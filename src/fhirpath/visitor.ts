@@ -474,7 +474,7 @@ export class FHIRPathToTSqlVisitor
       }
     }
 
-    // Handle JSON_VALUE expressions 
+    // Handle JSON_VALUE expressions
     if (base.includes("JSON_VALUE")) {
       const pathMatch = /JSON_VALUE\(([^,]+),\s*'([^']+)'\)/.exec(base);
       if (pathMatch) {
@@ -482,6 +482,8 @@ export class FHIRPathToTSqlVisitor
         const existingPath = pathMatch[2];
 
         // Special handling for FHIR array fields
+        // Only add [0] when NOT in a forEach iteration context
+        // In forEach, we're already at the element level, so arrays within elements are accessed directly
         const knownArrayFields = [
           "name",
           "telecom",
@@ -491,10 +493,12 @@ export class FHIRPathToTSqlVisitor
           "contact",
         ];
         const pathParts = existingPath.split(".");
+        const isInIterationContext = source.includes("forEach_");
         if (
           pathParts.length >= 2 &&
           knownArrayFields.includes(pathParts[1]) &&
-          !existingPath.includes("[")
+          !existingPath.includes("[") &&
+          !isInIterationContext
         ) {
           const newPath = `${pathParts[0]}.${pathParts[1]}[0].${memberName}`;
           return `JSON_VALUE(${source}, '${newPath}')`;

@@ -161,9 +161,9 @@ export class QueryGenerator {
   ): string {
     const fromClause = this.generateFromClause(viewDef, context);
 
-    // Generate CROSS APPLY clauses for forEach
+    // Generate CROSS APPLY clauses for forEach and create a mapping of forEach → alias
     let applyClauses = "";
-    let currentContext = { ...context };
+    const forEachContextMap = new Map<ViewDefinitionSelect, TranspilerContext>();
 
     for (let i = 0; i < forEachSelects.length; i++) {
       const forEachSelect = forEachSelects[i];
@@ -172,27 +172,29 @@ export class QueryGenerator {
       const applyAlias = `forEach_${i}`;
 
       if (isOrNull) {
-        applyClauses += `\nOUTER APPLY OPENJSON(${currentContext.resourceAlias}.json, '$.${forEachPath}') AS ${applyAlias}`;
+        applyClauses += `\nOUTER APPLY OPENJSON(${context.resourceAlias}.json, '$.${forEachPath}') AS ${applyAlias}`;
       } else {
-        applyClauses += `\nCROSS APPLY OPENJSON(${currentContext.resourceAlias}.json, '$.${forEachPath}') AS ${applyAlias}`;
+        applyClauses += `\nCROSS APPLY OPENJSON(${context.resourceAlias}.json, '$.${forEachPath}') AS ${applyAlias}`;
       }
 
-      // Update context for nested forEach
-      currentContext = {
-        ...currentContext,
+      // Create a context specific to this forEach
+      const forEachContext: TranspilerContext = {
+        ...context,
         iterationContext: `${applyAlias}.value`,
-        // forEach iteration context
         currentForEachAlias: applyAlias,
-        forEachSource: `${currentContext.resourceAlias}.json`,
+        forEachSource: `${context.resourceAlias}.json`,
         forEachPath: `$.${forEachPath}`,
       };
+
+      forEachContextMap.set(forEachSelect, forEachContext);
     }
 
     // Generate SELECT clause with all columns, including forEach columns
     const selectClause = this.generateForEachSelectClause(
       combination,
-      currentContext,
+      context,
       forEachSelects,
+      forEachContextMap,
     );
 
     const resourceTypeFilter = this.generateResourceTypeFilter(viewDef, context);
@@ -205,12 +207,10 @@ export class QueryGenerator {
     if (whereClause) {
       whereConditions.push(whereClause);
     }
-    
+
     if (whereConditions.length > 0) {
       statement += `\nWHERE ${whereConditions.join(' AND ')}`;
     }
-
-    // Debug logging removed
 
     return statement;
   }
@@ -222,11 +222,12 @@ export class QueryGenerator {
     combination: SelectCombination,
     context: TranspilerContext,
     forEachSelects: ViewDefinitionSelect[],
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
   ): string {
     const columnParts: string[] = [];
 
     this.addNonForEachColumns(combination, columnParts, context);
-    this.addForEachColumns(forEachSelects, columnParts, context);
+    this.addForEachColumns(forEachSelects, columnParts, forEachContextMap);
 
     return `SELECT\n  ${columnParts.join(",\n  ")}`;
   }
@@ -256,15 +257,20 @@ export class QueryGenerator {
   private addForEachColumns(
     forEachSelects: ViewDefinitionSelect[],
     columnParts: string[],
-    context: TranspilerContext,
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
   ): void {
     for (const forEachSelect of forEachSelects) {
+      const forEachContext = forEachContextMap.get(forEachSelect);
+      if (!forEachContext) {
+        throw new Error("forEach context not found in map");
+      }
+
       if (forEachSelect.column) {
-        this.addColumnsToList(forEachSelect.column, columnParts, context);
+        this.addColumnsToList(forEachSelect.column, columnParts, forEachContext);
       }
 
       if (forEachSelect.select) {
-        this.addNestedForEachColumns(forEachSelect.select, columnParts, context);
+        this.addNestedForEachColumns(forEachSelect.select, columnParts, forEachContext);
       }
     }
   }
