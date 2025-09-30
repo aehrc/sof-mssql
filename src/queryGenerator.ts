@@ -165,13 +165,14 @@ export class QueryGenerator {
     const forEachContextMap = new Map<ViewDefinitionSelect, TranspilerContext>();
     const counterState = { value: 0 };
 
-    // Process only top-level forEach from the combination
+    // Use the forEachSelects parameter which includes all forEach (top-level and nested)
+    // Filter to only those at the top level of combination.selects for context generation
     const topLevelForEach = combination.selects.filter(
       (select) => select.forEach || select.forEachOrNull,
     );
 
     // First pass: generate contexts for all forEach in original order to assign aliases
-    for (const select of topLevelForEach) {
+    for (const select of forEachSelects) {
       this.generateForEachClauses(
         select,
         context.resourceAlias + ".json",
@@ -183,7 +184,7 @@ export class QueryGenerator {
 
     // Second pass: generate CROSS APPLY clauses in reverse order
     // This makes the last forEach in the select array the innermost CROSS APPLY (inner loop)
-    const applyClauses = [...topLevelForEach]
+    const applyClauses = [...forEachSelects]
       .reverse()
       .map((select) => {
         // Look up the pre-generated context
@@ -497,7 +498,7 @@ export class QueryGenerator {
   }
 
   /**
-   * Get all selects that have forEach or forEachOrNull.
+   * Get all selects that have forEach or forEachOrNull, recursively.
    */
   private getForEachSelects(
     selects: ViewDefinitionSelect[],
