@@ -104,6 +104,7 @@ export class ViewDefinitionParser {
 
     if (select.unionAll) {
       this.validateSelectElements(select.unionAll);
+      this.validateUnionAllColumns(select.unionAll);
     }
   }
 
@@ -172,6 +173,80 @@ export class ViewDefinitionParser {
         );
       }
     }
+  }
+
+  /**
+   * Validate that all branches of a unionAll have the same columns in the same order.
+   */
+  private static validateUnionAllColumns(unionAllBranches: any[]): void {
+    if (unionAllBranches.length < 2) {
+      return; // Nothing to validate
+    }
+
+    // Extract column definitions from each branch
+    const branchColumns: Array<Array<{ name: string; type?: string }>> = [];
+
+    for (const branch of unionAllBranches) {
+      const columns = this.extractColumnsFromSelect(branch);
+      branchColumns.push(columns);
+    }
+
+    // Compare first branch with all other branches
+    const firstBranch = branchColumns[0];
+
+    for (let i = 1; i < branchColumns.length; i++) {
+      const currentBranch = branchColumns[i];
+
+      // Check if column count matches
+      if (firstBranch.length !== currentBranch.length) {
+        throw new Error(
+          `unionAll branches must have the same columns. ` +
+          `Branch 1 has ${firstBranch.length} columns, but branch ${i + 1} has ${currentBranch.length} columns.`
+        );
+      }
+
+      // Check if column names and order match
+      for (let j = 0; j < firstBranch.length; j++) {
+        if (firstBranch[j].name !== currentBranch[j].name) {
+          throw new Error(
+            `unionAll branches must have the same columns in the same order. ` +
+            `Column at position ${j + 1}: branch 1 has "${firstBranch[j].name}", ` +
+            `but branch ${i + 1} has "${currentBranch[j].name}".`
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Extract column definitions from a select element.
+   * Handles direct columns, forEach columns, and nested select columns.
+   */
+  private static extractColumnsFromSelect(select: any): Array<{ name: string; type?: string }> {
+    const columns: Array<{ name: string; type?: string }> = [];
+
+    // Direct columns
+    if (select.column) {
+      for (const column of select.column) {
+        columns.push({ name: column.name, type: column.type });
+      }
+    }
+
+    // Nested select columns
+    if (select.select) {
+      for (const nestedSelect of select.select) {
+        const nestedColumns = this.extractColumnsFromSelect(nestedSelect);
+        columns.push(...nestedColumns);
+      }
+    }
+
+    // UnionAll - take columns from first branch (all branches should be validated to match)
+    if (select.unionAll && select.unionAll.length > 0) {
+      const unionColumns = this.extractColumnsFromSelect(select.unionAll[0]);
+      columns.push(...unionColumns);
+    }
+
+    return columns;
   }
 
   /**

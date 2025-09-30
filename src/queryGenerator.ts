@@ -11,7 +11,7 @@ import {
   ViewDefinitionColumn,
   ViewDefinitionConstant,
   ViewDefinitionSelect,
-  ViewDefinitionWhere
+  ViewDefinitionWhere,
 } from "./types.js";
 
 interface SelectCombination {
@@ -101,13 +101,37 @@ export class QueryGenerator {
     context: TranspilerContext,
   ): string {
     // Check if we have ANY forEach operations (including nested) that need CROSS APPLY
-    const hasForEach = this.hasForEachInSelects(combination.selects);
+    // Must check the actual selected unionAll branches, not just the parent selects
+    const hasForEach = this.combinationHasForEach(combination);
 
     if (hasForEach) {
       return this.generateForEachStatement(combination, viewDef, context);
     } else {
       return this.generateSimpleStatement(combination, viewDef, context);
     }
+  }
+
+  /**
+   * Check if a specific combination has forEach operations.
+   * This checks the actual selected unionAll branches, not just the parent selects.
+   */
+  private combinationHasForEach(combination: SelectCombination): boolean {
+    for (let i = 0; i < combination.selects.length; i++) {
+      const select = combination.selects[i];
+      const unionChoice = combination.unionChoices[i];
+
+      // If this select has a unionAll choice, check the chosen branch
+      if (unionChoice >= 0 && select.unionAll?.[unionChoice]) {
+        const chosenBranch = select.unionAll[unionChoice];
+        if (this.selectHasForEach(chosenBranch)) {
+          return true;
+        }
+      } else if (this.selectHasForEach(select)) {
+        // No unionAll choice, check the select itself
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -168,7 +192,10 @@ export class QueryGenerator {
       context,
     );
     const fromClause = this.generateFromClause(context);
-    const resourceTypeFilter = this.generateResourceTypeFilter(viewDef, context);
+    const resourceTypeFilter = this.generateResourceTypeFilter(
+      viewDef,
+      context,
+    );
     const whereClause = this.generateWhereClause(viewDef.where, context);
 
     let statement = `${selectClause}\n${fromClause}`;
@@ -178,9 +205,9 @@ export class QueryGenerator {
     if (whereClause) {
       whereConditions.push(whereClause);
     }
-    
+
     if (whereConditions.length > 0) {
-      statement += `\nWHERE ${whereConditions.join(' AND ')}`;
+      statement += `\nWHERE ${whereConditions.join(" AND ")}`;
     }
 
     // Debug logging removed
@@ -200,8 +227,13 @@ export class QueryGenerator {
     const { forEachContextMap, topLevelForEach } = this.buildForEachContextMap(
       combination.selects,
       context,
+      combination,
     );
-    const applyClauses = this.buildApplyClauses(forEachContextMap, topLevelForEach, combination);
+    const applyClauses = this.buildApplyClauses(
+      forEachContextMap,
+      topLevelForEach,
+      combination,
+    );
     const selectClause = this.generateForEachSelectClause(
       combination,
       context,
@@ -220,19 +252,24 @@ export class QueryGenerator {
   /**
    * Build the forEach context map by generating contexts for all forEach.
    * Only processes top-level forEach - nested forEach are handled recursively.
+   * Must be aware of the combination to process the correct unionAll branches.
    */
   private buildForEachContextMap(
     selects: ViewDefinitionSelect[],
     context: TranspilerContext,
+    combination?: SelectCombination,
   ): {
     forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>;
     topLevelForEach: ViewDefinitionSelect[];
   } {
-    const forEachContextMap = new Map<ViewDefinitionSelect, TranspilerContext>();
+    const forEachContextMap = new Map<
+      ViewDefinitionSelect,
+      TranspilerContext
+    >();
     const counterState = { value: 0 };
 
-    // Collect all top-level forEach (including those in nested select arrays of non-forEach selects)
-    const topLevelForEach = this.collectTopLevelForEach(selects);
+    // Collect all top-level forEach (including those in nested select arrays and unionAll branches)
+    const topLevelForEach = this.collectTopLevelForEach(selects, combination);
 
     // Process each top-level forEach
     for (const select of topLevelForEach) {
@@ -249,32 +286,86 @@ export class QueryGenerator {
   }
 
   /**
+   * Helper to add forEach from a select array to the topLevelForEach list.
+   */
+  private addForEachFromSelectArray(
+    selects: ViewDefinitionSelect[],
+    topLevelForEach: ViewDefinitionSelect[],
+  ): void {
+    for (const nestedSelect of selects) {
+      if (nestedSelect.forEach || nestedSelect.forEachOrNull) {
+        topLevelForEach.push(nestedSelect);
+      }
+    }
+  }
+
+  /**
    * Collect all forEach that should be treated as top-level.
    * This includes:
    * 1. Selects that directly have forEach
    * 2. forEach inside select arrays of non-forEach selects
+   * 3. forEach inside the chosen unionAll branches (when combination is provided)
    */
   private collectTopLevelForEach(
     selects: ViewDefinitionSelect[],
+    combination?: SelectCombination,
   ): ViewDefinitionSelect[] {
     const topLevelForEach: ViewDefinitionSelect[] = [];
 
-    for (const select of selects) {
-      if (select.forEach || select.forEachOrNull) {
-        // This is a direct forEach
-        topLevelForEach.push(select);
-      } else if (select.select) {
-        // This is a non-forEach select with nested selects
-        // Any forEach in these nested selects should be treated as top-level
-        for (const nestedSelect of select.select) {
-          if (nestedSelect.forEach || nestedSelect.forEachOrNull) {
-            topLevelForEach.push(nestedSelect);
-          }
-        }
+    for (const element of selects) {
+      const select = element;
+
+      if (
+        combination &&
+        this.processUnionAllChoice(select, combination, topLevelForEach)
+      ) {
+        continue;
       }
+
+      this.processSelectForEach(select, topLevelForEach);
     }
 
     return topLevelForEach;
+  }
+
+  /**
+   * Process a select with a unionAll choice from a combination.
+   * Returns true if processing occurred, false otherwise.
+   */
+  private processUnionAllChoice(
+    select: ViewDefinitionSelect,
+    combination: SelectCombination,
+    topLevelForEach: ViewDefinitionSelect[],
+  ): boolean {
+    const selectIndex = combination.selects.indexOf(select);
+    const unionChoice =
+      selectIndex >= 0 ? combination.unionChoices[selectIndex] : -1;
+
+    if (unionChoice >= 0 && select.unionAll?.[unionChoice]) {
+      const chosenBranch = select.unionAll[unionChoice];
+      if (chosenBranch.forEach || chosenBranch.forEachOrNull) {
+        topLevelForEach.push(chosenBranch);
+      } else if (chosenBranch.select) {
+        this.addForEachFromSelectArray(chosenBranch.select, topLevelForEach);
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Process a select for forEach, handling both direct forEach and nested selects.
+   */
+  private processSelectForEach(
+    select: ViewDefinitionSelect,
+    topLevelForEach: ViewDefinitionSelect[],
+  ): void {
+    if (select.forEach || select.forEachOrNull) {
+      topLevelForEach.push(select);
+    } else if (select.select) {
+      this.addForEachFromSelectArray(select.select, topLevelForEach);
+    }
   }
 
   /**
@@ -294,7 +385,12 @@ export class QueryGenerator {
         if (!forEachContext) {
           throw new Error("forEach context not found");
         }
-        return this.generateForEachClause(select, forEachContext, forEachContextMap, combination);
+        return this.generateForEachClause(
+          select,
+          forEachContext,
+          forEachContextMap,
+          combination,
+        );
       })
       .join("");
   }
@@ -309,7 +405,10 @@ export class QueryGenerator {
     viewDef: ViewDefinition,
     context: TranspilerContext,
   ): string {
-    const resourceTypeFilter = this.generateResourceTypeFilter(viewDef, context);
+    const resourceTypeFilter = this.generateResourceTypeFilter(
+      viewDef,
+      context,
+    );
     const whereClause = this.generateWhereClause(viewDef.where, context);
 
     let statement = `${selectClause}\n${fromClause}${applyClauses}`;
@@ -320,7 +419,7 @@ export class QueryGenerator {
     }
 
     if (whereConditions.length > 0) {
-      statement += `\nWHERE ${whereConditions.join(' AND ')}`;
+      statement += `\nWHERE ${whereConditions.join(" AND ")}`;
     }
 
     return statement;
@@ -338,7 +437,11 @@ export class QueryGenerator {
     counterState: { value: number },
   ): string {
     const applyAlias = `forEach_${counterState.value++}`;
-    const clause = this.buildForEachClause(forEachSelect, sourceExpression, applyAlias);
+    const clause = this.buildForEachClause(
+      forEachSelect,
+      sourceExpression,
+      applyAlias,
+    );
     const forEachContext = this.createForEachContext(
       baseContext,
       applyAlias,
@@ -361,17 +464,287 @@ export class QueryGenerator {
 
   /**
    * Build the CROSS APPLY or OUTER APPLY clause for a forEach.
+   * Handles array flattening for paths that traverse multiple arrays (e.g., contact.telecom).
    */
   private buildForEachClause(
     forEachSelect: ViewDefinitionSelect,
     sourceExpression: string,
     applyAlias: string,
   ): string {
-    const forEachPath = forEachSelect.forEach ?? forEachSelect.forEachOrNull;
+    const rawPath = forEachSelect.forEach ?? forEachSelect.forEachOrNull;
     const isOrNull = !!forEachSelect.forEachOrNull;
     const applyType = isOrNull ? "OUTER APPLY" : "CROSS APPLY";
 
+    // Handle FHIRPath .where() function - strip it and handle specially
+    const { path: pathWithoutWhere, whereCondition } = this.parseFHIRPathWhere(
+      rawPath ?? "",
+    );
+
+    // Handle array indexing in forEach paths (e.g., telecom[0])
+    const { path: forEachPath, arrayIndex } =
+      this.parseArrayIndexing(pathWithoutWhere);
+
+    // Check if this path requires array flattening (e.g., contact.telecom)
+    const arrayPaths = this.detectArrayFlatteningPaths(forEachPath);
+
+    if (arrayPaths.length > 1) {
+      // Multiple arrays to traverse - generate nested CROSS APPLY
+      return this.buildNestedForEachClause(
+        arrayPaths,
+        sourceExpression,
+        applyAlias,
+        applyType,
+        arrayIndex,
+        whereCondition,
+      );
+    }
+
+    // Simple single array path
+    // If array index is present, wrap in a subquery with WHERE to filter
+    if (arrayIndex !== null || whereCondition !== null) {
+      const whereClauses: string[] = [];
+      if (arrayIndex !== null) {
+        whereClauses.push(`[key] = '${arrayIndex}'`);
+      }
+      if (whereCondition !== null) {
+        whereClauses.push(whereCondition);
+      }
+
+      return `\n${applyType} (
+        SELECT * FROM OPENJSON(${sourceExpression}, '$.${forEachPath}')
+        WHERE ${whereClauses.join(" AND ")}
+      ) AS ${applyAlias}`;
+    }
+
     return `\n${applyType} OPENJSON(${sourceExpression}, '$.${forEachPath}') AS ${applyAlias}`;
+  }
+
+  /**
+   * Parse FHIRPath .where() function from a path.
+   * Currently only supports .where(false) which filters out everything.
+   */
+  private parseFHIRPathWhere(path: string): {
+    path: string;
+    whereCondition: string | null;
+  } {
+    const whereMatch = /^(.+)\.where\((.*)\)$/.exec(path);
+    if (whereMatch) {
+      const basePath = whereMatch[1];
+      const condition = whereMatch[2].trim();
+
+      // Handle .where(false) - filter out everything
+      if (condition === "false") {
+        return {
+          path: basePath,
+          whereCondition: "1 = 0", // Always false
+        };
+      }
+
+      // Other .where() conditions not yet supported
+      throw new Error(
+        `FHIRPath .where() function with condition "${condition}" is not yet supported`,
+      );
+    }
+
+    return { path, whereCondition: null };
+  }
+
+  /**
+   * Parse array indexing from a forEach path.
+   * For paths like "contact.telecom[0]", interpret as "contact[0].telecom[0]" - apply index to all array segments.
+   */
+  private parseArrayIndexing(path: string): {
+    path: string;
+    arrayIndex: number | null;
+  } {
+    // Check if the last segment has array indexing
+    const match = /^(.+)\[(\d+)]$/.exec(path);
+    if (match) {
+      const basePath = match[1];
+      const arrayIndex = parseInt(match[2], 10);
+
+      // Check if this is a multi-segment path (e.g., contact.telecom[0])
+      const segments = basePath.split(".");
+      if (segments.length > 1) {
+        // For contact.telecom[0], interpret as contact[0].telecom[0]
+        // Apply the index to ALL array segments
+        const knownArrays = [
+          "name",
+          "telecom",
+          "address",
+          "contact",
+          "identifier",
+          "communication",
+          "link",
+        ];
+
+        const indexedPath = segments
+          .map((seg) => {
+            const cleanSeg = seg.replace(/\[.*]/, "");
+            if (knownArrays.includes(cleanSeg)) {
+              return `${cleanSeg}[${arrayIndex}]`;
+            }
+            return cleanSeg;
+          })
+          .join(".");
+
+        return {
+          path: indexedPath,
+          arrayIndex: null, // Index already applied in path
+        };
+      }
+
+      return {
+        path: basePath,
+        arrayIndex: arrayIndex,
+      };
+    }
+    return { path, arrayIndex: null };
+  }
+
+  /**
+   * Detect if a forEach path requires array flattening.
+   * Returns array of path segments that are arrays in FHIR Patient resource.
+   */
+  private detectArrayFlatteningPaths(path: string): string[] {
+    // Known array fields in FHIR Patient that could be traversed
+    const knownArrays = [
+      "name",
+      "telecom",
+      "address",
+      "contact",
+      "identifier",
+      "communication",
+      "link",
+    ];
+
+    const segments = path.split(".");
+    const arraySegments: string[] = [];
+
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      // Remove array indexing if present (e.g., telecom[0] -> telecom)
+      const cleanSegment = segment.replace(/\[.*]/, "");
+
+      if (knownArrays.includes(cleanSegment)) {
+        // Build the path up to this array
+        arraySegments.push(segments.slice(0, i + 1).join("."));
+      }
+    }
+
+    return arraySegments;
+  }
+
+  /**
+   * Build nested CROSS APPLY clauses for array flattening.
+   */
+  private buildNestedForEachClause(
+    arrayPaths: string[],
+    sourceExpression: string,
+    finalAlias: string,
+    applyType: string,
+    arrayIndex?: number | null,
+    whereCondition?: string | null,
+  ): string {
+    let clauses = "";
+    let currentSource = sourceExpression;
+
+    for (let i = 0; i < arrayPaths.length; i++) {
+      const isLast = i === arrayPaths.length - 1;
+      const alias = isLast ? finalAlias : `${finalAlias}_nest${i}`;
+
+      const pathSegment = this.extractPathSegment(arrayPaths, i);
+      const { cleanSegment, segmentIndex } =
+        this.parseSegmentIndexing(pathSegment);
+      const jsonPath = `$.${cleanSegment}`;
+
+      const whereClauses = this.buildWhereClauses(
+        isLast,
+        segmentIndex,
+        arrayIndex,
+        whereCondition,
+      );
+
+      clauses += this.buildApplyWithOptionalWhere(
+        applyType,
+        currentSource,
+        jsonPath,
+        alias,
+        whereClauses,
+      );
+
+      currentSource = `${alias}.value`;
+    }
+
+    return clauses;
+  }
+
+  /**
+   * Extract path segment for a specific level in array paths.
+   */
+  private extractPathSegment(arrayPaths: string[], index: number): string {
+    const fullPath = arrayPaths[index];
+    const previousPath = index > 0 ? arrayPaths[index - 1] : "";
+    return previousPath
+      ? fullPath.substring(previousPath.length + 1)
+      : fullPath;
+  }
+
+  /**
+   * Parse array indexing from a path segment.
+   */
+  private parseSegmentIndexing(pathSegment: string): {
+    cleanSegment: string;
+    segmentIndex: number | null;
+  } {
+    const segmentMatch = /^(.+)\[(\d+)]$/.exec(pathSegment);
+    return {
+      cleanSegment: segmentMatch ? segmentMatch[1] : pathSegment,
+      segmentIndex: segmentMatch ? parseInt(segmentMatch[2], 10) : null,
+    };
+  }
+
+  /**
+   * Build WHERE clause conditions for array filtering.
+   */
+  private buildWhereClauses(
+    isLast: boolean,
+    segmentIndex: number | null,
+    arrayIndex: number | null | undefined,
+    whereCondition: string | null | undefined,
+  ): string[] {
+    const whereClauses: string[] = [];
+
+    if (segmentIndex !== null) {
+      whereClauses.push(`[key] = '${segmentIndex}'`);
+    } else if (isLast && arrayIndex !== null && arrayIndex !== undefined) {
+      whereClauses.push(`[key] = '${arrayIndex}'`);
+    }
+
+    if (isLast && whereCondition !== null && whereCondition !== undefined) {
+      whereClauses.push(whereCondition);
+    }
+
+    return whereClauses;
+  }
+
+  /**
+   * Build APPLY clause with optional WHERE conditions.
+   */
+  private buildApplyWithOptionalWhere(
+    applyType: string,
+    source: string,
+    jsonPath: string,
+    alias: string,
+    whereClauses: string[],
+  ): string {
+    if (whereClauses.length > 0) {
+      return `\n${applyType} (
+        SELECT * FROM OPENJSON(${source}, '${jsonPath}')
+        WHERE ${whereClauses.join(" AND ")}
+      ) AS ${alias}`;
+    }
+    return `\n${applyType} OPENJSON(${source}, '${jsonPath}') AS ${alias}`;
   }
 
   /**
@@ -440,7 +813,9 @@ export class QueryGenerator {
     counterState: { value: number },
   ): string {
     return nestedSelects
-      .filter((nestedSelect) => nestedSelect.forEach ?? nestedSelect.forEachOrNull)
+      .filter(
+        (nestedSelect) => nestedSelect.forEach ?? nestedSelect.forEachOrNull,
+      )
       .map((nestedSelect) =>
         this.generateForEachClauses(
           nestedSelect,
@@ -508,18 +883,87 @@ export class QueryGenerator {
 
   /**
    * Build the APPLY clause for a forEach using its pre-generated context.
+   * Handles array flattening for paths that traverse multiple arrays and array indexing.
    */
   private buildApplyClause(
     forEachSelect: ViewDefinitionSelect,
     forEachContext: TranspilerContext,
   ): string {
-    const forEachPath = forEachSelect.forEach ?? forEachSelect.forEachOrNull;
+    const rawPath = forEachSelect.forEach ?? forEachSelect.forEachOrNull;
     const isOrNull = !!forEachSelect.forEachOrNull;
     const applyType = isOrNull ? "OUTER APPLY" : "CROSS APPLY";
-    const applyAlias = forEachContext.currentForEachAlias;
-    const sourceExpression = forEachContext.forEachSource;
+    const applyAlias = forEachContext.currentForEachAlias ?? "";
+    const sourceExpression = forEachContext.forEachSource ?? "";
+
+    const { path: pathWithoutWhere, whereCondition } = this.parseFHIRPathWhere(
+      rawPath ?? "",
+    );
+    const { path: forEachPath, arrayIndex } =
+      this.parseArrayIndexing(pathWithoutWhere);
+    const arrayPaths = this.detectArrayFlatteningPaths(forEachPath);
+
+    if (arrayPaths.length > 1) {
+      return this.buildNestedForEachClause(
+        arrayPaths,
+        sourceExpression,
+        applyAlias,
+        applyType,
+        arrayIndex,
+        whereCondition,
+      );
+    }
+
+    return this.buildSimpleApplyClause(
+      applyType,
+      sourceExpression,
+      forEachPath,
+      applyAlias,
+      arrayIndex,
+      whereCondition,
+    );
+  }
+
+  /**
+   * Build a simple APPLY clause for single array paths.
+   */
+  private buildSimpleApplyClause(
+    applyType: string,
+    sourceExpression: string,
+    forEachPath: string,
+    applyAlias: string,
+    arrayIndex: number | null,
+    whereCondition: string | null,
+  ): string {
+    const whereClauses = this.buildWhereClausesForApply(
+      arrayIndex,
+      whereCondition,
+    );
+
+    if (whereClauses.length > 0) {
+      return `\n${applyType} (
+        SELECT * FROM OPENJSON(${sourceExpression}, '$.${forEachPath}')
+        WHERE ${whereClauses.join(" AND ")}
+      ) AS ${applyAlias}`;
+    }
 
     return `\n${applyType} OPENJSON(${sourceExpression}, '$.${forEachPath}') AS ${applyAlias}`;
+  }
+
+  /**
+   * Build WHERE clauses for APPLY operations.
+   */
+  private buildWhereClausesForApply(
+    arrayIndex: number | null,
+    whereCondition: string | null,
+  ): string[] {
+    const whereClauses: string[] = [];
+    if (arrayIndex !== null) {
+      whereClauses.push(`[key] = '${arrayIndex}'`);
+    }
+    if (whereCondition !== null) {
+      whereClauses.push(whereCondition);
+    }
+    return whereClauses;
   }
 
   /**
@@ -535,13 +979,20 @@ export class QueryGenerator {
     }
 
     return forEachSelect.select
-      .filter((nestedSelect) => nestedSelect.forEach ?? nestedSelect.forEachOrNull)
+      .filter(
+        (nestedSelect) => nestedSelect.forEach ?? nestedSelect.forEachOrNull,
+      )
       .map((nestedSelect) => {
         const nestedContext = forEachContextMap.get(nestedSelect);
         if (!nestedContext) {
           throw new Error("Nested forEach context not found");
         }
-        return this.generateForEachClause(nestedSelect, nestedContext, forEachContextMap, combination);
+        return this.generateForEachClause(
+          nestedSelect,
+          nestedContext,
+          forEachContextMap,
+          combination,
+        );
       })
       .join("");
   }
@@ -558,7 +1009,10 @@ export class QueryGenerator {
       return "";
     }
 
-    const selectedUnionOption = this.getSelectedUnionOption(forEachSelect, combination);
+    const selectedUnionOption = this.getSelectedUnionOption(
+      forEachSelect,
+      combination,
+    );
     if (!selectedUnionOption) {
       return "";
     }
@@ -572,7 +1026,12 @@ export class QueryGenerator {
       return "";
     }
 
-    return this.generateForEachClause(selectedUnionOption, nestedContext, forEachContextMap, combination);
+    return this.generateForEachClause(
+      selectedUnionOption,
+      nestedContext,
+      forEachContextMap,
+      combination,
+    );
   }
 
   /**
@@ -587,9 +1046,13 @@ export class QueryGenerator {
     }
 
     const selectIndex = combination.selects.indexOf(forEachSelect);
-    const selectedUnionIndex = selectIndex >= 0 ? combination.unionChoices[selectIndex] : -1;
+    const selectedUnionIndex =
+      selectIndex >= 0 ? combination.unionChoices[selectIndex] : -1;
 
-    if (selectedUnionIndex < 0 || selectedUnionIndex >= forEachSelect.unionAll.length) {
+    if (
+      selectedUnionIndex < 0 ||
+      selectedUnionIndex >= forEachSelect.unionAll.length
+    ) {
       return null;
     }
 
@@ -606,13 +1069,27 @@ export class QueryGenerator {
   ): string {
     const columnParts: string[] = [];
 
-    this.addNonForEachColumns(combination, columnParts, context);
-
-    // Only process top-level forEach (not nested ones)
-    const topLevelForEachSelects = combination.selects.filter(
-      (s) => s.forEach ?? s.forEachOrNull,
+    this.addNonForEachColumns(
+      combination,
+      columnParts,
+      context,
+      forEachContextMap,
     );
-    this.addForEachColumns(topLevelForEachSelects, columnParts, forEachContextMap, combination);
+
+    // Get top-level forEach from the context map (includes unionAll forEach)
+    const topLevelForEachSelects = Array.from(forEachContextMap.keys()).filter(
+      (select) => {
+        const ctx = forEachContextMap.get(select);
+        // Top-level forEach have resource.json as their source
+        return ctx && ctx.forEachSource === context.resourceAlias + ".json";
+      },
+    );
+    this.addForEachColumns(
+      topLevelForEachSelects,
+      columnParts,
+      forEachContextMap,
+      combination,
+    );
 
     return `SELECT\n  ${columnParts.join(",\n  ")}`;
   }
@@ -624,15 +1101,72 @@ export class QueryGenerator {
     combination: SelectCombination,
     columnParts: string[],
     context: TranspilerContext,
+    _forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
   ): void {
     for (let i = 0; i < combination.selects.length; i++) {
       const select = combination.selects[i];
       const unionChoice = combination.unionChoices[i];
 
-      if (!select.forEach && !select.forEachOrNull) {
-        this.addSelectElementColumns(select, columnParts, context);
-        this.addUnionAllColumns(select, unionChoice, columnParts, context);
-      }
+      const { hasForEachInSelect, hasForEachInUnion } =
+        this.checkForEachPresence(select, unionChoice);
+
+      this.addSelectColumns(select, hasForEachInSelect, columnParts, context);
+      this.addUnionColumns(
+        select,
+        unionChoice,
+        hasForEachInUnion,
+        columnParts,
+        context,
+      );
+    }
+  }
+
+  /**
+   * Check if a select or its unionAll branch has forEach.
+   */
+  private checkForEachPresence(
+    select: ViewDefinitionSelect,
+    unionChoice: number,
+  ): { hasForEachInSelect: boolean; hasForEachInUnion: boolean } {
+    const hasForEachInSelect = !!(select.forEach ?? select.forEachOrNull);
+    let hasForEachInUnion = false;
+
+    if (unionChoice >= 0 && select.unionAll?.[unionChoice]) {
+      const chosenBranch = select.unionAll[unionChoice];
+      hasForEachInUnion = !!(
+        chosenBranch.forEach ?? chosenBranch.forEachOrNull
+      );
+    }
+
+    return { hasForEachInSelect, hasForEachInUnion };
+  }
+
+  /**
+   * Add columns from a select if it doesn't have forEach.
+   */
+  private addSelectColumns(
+    select: ViewDefinitionSelect,
+    hasForEach: boolean,
+    columnParts: string[],
+    context: TranspilerContext,
+  ): void {
+    if (!hasForEach && select.column) {
+      this.addColumnsToList(select.column, columnParts, context);
+    }
+  }
+
+  /**
+   * Add columns from a unionAll branch if it doesn't have forEach.
+   */
+  private addUnionColumns(
+    select: ViewDefinitionSelect,
+    unionChoice: number,
+    hasForEach: boolean,
+    columnParts: string[],
+    context: TranspilerContext,
+  ): void {
+    if (!hasForEach && unionChoice >= 0) {
+      this.addUnionAllColumns(select, unionChoice, columnParts, context);
     }
   }
 
@@ -659,11 +1193,18 @@ export class QueryGenerator {
 
       // Find the index of this forEach in the original combination.selects array
       const originalIndex = combination.selects.indexOf(forEachSelect);
-      const unionChoice = originalIndex >= 0 ? combination.unionChoices[originalIndex] : -1;
+      const unionChoice =
+        originalIndex >= 0 ? combination.unionChoices[originalIndex] : -1;
 
       // Handle unionAll for forEach
       if (unionChoice >= 0) {
-        this.addUnionAllColumns(forEachSelect, unionChoice, columnParts, forEachContext, forEachContextMap);
+        this.addUnionAllColumns(
+          forEachSelect,
+          unionChoice,
+          columnParts,
+          forEachContext,
+          forEachContextMap,
+        );
       }
     }
 
@@ -675,7 +1216,11 @@ export class QueryGenerator {
       }
 
       if (forEachSelect.column) {
-        this.addColumnsToList(forEachSelect.column, columnParts, forEachContext);
+        this.addColumnsToList(
+          forEachSelect.column,
+          columnParts,
+          forEachContext,
+        );
       }
 
       if (forEachSelect.select) {
@@ -701,9 +1246,18 @@ export class QueryGenerator {
   ): void {
     for (const nestedSelect of nestedSelects) {
       if (this.isForEachSelect(nestedSelect) && forEachContextMap) {
-        this.processNestedForEachSelect(nestedSelect, columnParts, forEachContextMap);
+        this.processNestedForEachSelect(
+          nestedSelect,
+          columnParts,
+          forEachContextMap,
+        );
       } else {
-        this.processRegularNestedSelect(nestedSelect, columnParts, parentContext, forEachContextMap);
+        this.processRegularNestedSelect(
+          nestedSelect,
+          columnParts,
+          parentContext,
+          forEachContextMap,
+        );
       }
     }
   }
@@ -729,7 +1283,11 @@ export class QueryGenerator {
     }
 
     if (nestedSelect.column) {
-      this.addColumnsToList(nestedSelect.column, columnParts, nestedForEachContext);
+      this.addColumnsToList(
+        nestedSelect.column,
+        columnParts,
+        nestedForEachContext,
+      );
     }
 
     if (nestedSelect.select) {
@@ -899,9 +1457,7 @@ export class QueryGenerator {
   /**
    * Generate the FROM clause.
    */
-  private generateFromClause(
-    context: TranspilerContext,
-  ): string {
+  private generateFromClause(context: TranspilerContext): string {
     const tableName = `[${this.options.schemaName}].[${this.options.tableName}]`;
     return `FROM ${tableName} AS [${context.resourceAlias}]`;
   }
@@ -942,7 +1498,9 @@ export class QueryGenerator {
 
         if (simpleBooleanFieldPattern.test(condition.trim())) {
           // Convert JSON_VALUE result to boolean: handle 'true'/'false' string conversion
-          conditions.push(`(CASE WHEN ${condition} = 'true' THEN 1 ELSE 0 END = 1)`);
+          conditions.push(
+            `(CASE WHEN ${condition} = 'true' THEN 1 ELSE 0 END = 1)`,
+          );
         } else {
           conditions.push(condition);
         }
@@ -973,6 +1531,7 @@ export class QueryGenerator {
 
   /**
    * Expand combinations for a single select element.
+   * Handles nested unionAll by recursively expanding them.
    */
   private expandSelectCombinations(
     select: ViewDefinitionSelect,
@@ -982,25 +1541,99 @@ export class QueryGenerator {
 
     for (const combination of currentCombinations) {
       if (select.unionAll && select.unionAll.length > 0) {
-        // Create one combination for each unionAll choice
-        for (let i = 0; i < select.unionAll.length; i++) {
-          const newCombination: SelectCombination = {
-            selects: [...combination.selects, select],
-            unionChoices: [...combination.unionChoices, i],
-          };
-          newCombinations.push(newCombination);
-        }
+        this.expandUnionAllOptions(select, combination, newCombinations);
       } else {
-        // No unionAll, just add the select to existing combinations
-        const newCombination: SelectCombination = {
-          selects: [...combination.selects, select],
-          unionChoices: [...combination.unionChoices, -1], // -1 means no union choice
-        };
-        newCombinations.push(newCombination);
+        this.addNonUnionCombination(select, combination, newCombinations);
       }
     }
 
     return newCombinations;
+  }
+
+  /**
+   * Expand unionAll options for a select.
+   */
+  private expandUnionAllOptions(
+    select: ViewDefinitionSelect,
+    combination: SelectCombination,
+    newCombinations: SelectCombination[],
+  ): void {
+    const unionAll = select.unionAll;
+    if (!unionAll) return;
+
+    for (let i = 0; i < unionAll.length; i++) {
+      const unionOption = unionAll[i];
+
+      if (unionOption.unionAll && unionOption.unionAll.length > 0) {
+        this.expandNestedUnion(
+          select,
+          i,
+          unionOption,
+          combination,
+          newCombinations,
+        );
+      } else {
+        this.addSimpleUnionCombination(select, i, combination, newCombinations);
+      }
+    }
+  }
+
+  /**
+   * Expand nested unionAll within a unionAll option.
+   */
+  private expandNestedUnion(
+    select: ViewDefinitionSelect,
+    unionIndex: number,
+    unionOption: ViewDefinitionSelect,
+    combination: SelectCombination,
+    newCombinations: SelectCombination[],
+  ): void {
+    const nestedCombinations = this.expandSelectCombinations(unionOption, [
+      { selects: [], unionChoices: [] },
+    ]);
+
+    for (const nestedComb of nestedCombinations) {
+      const newCombination: SelectCombination = {
+        selects: [...combination.selects, select, ...nestedComb.selects],
+        unionChoices: [
+          ...combination.unionChoices,
+          unionIndex,
+          ...nestedComb.unionChoices,
+        ],
+      };
+      newCombinations.push(newCombination);
+    }
+  }
+
+  /**
+   * Add a simple unionAll combination (no nested unionAll).
+   */
+  private addSimpleUnionCombination(
+    select: ViewDefinitionSelect,
+    unionIndex: number,
+    combination: SelectCombination,
+    newCombinations: SelectCombination[],
+  ): void {
+    const newCombination: SelectCombination = {
+      selects: [...combination.selects, select],
+      unionChoices: [...combination.unionChoices, unionIndex],
+    };
+    newCombinations.push(newCombination);
+  }
+
+  /**
+   * Add a combination for a select without unionAll.
+   */
+  private addNonUnionCombination(
+    select: ViewDefinitionSelect,
+    combination: SelectCombination,
+    newCombinations: SelectCombination[],
+  ): void {
+    const newCombination: SelectCombination = {
+      selects: [...combination.selects, select],
+      unionChoices: [...combination.unionChoices, -1],
+    };
+    newCombinations.push(newCombination);
   }
 
   /**
@@ -1072,11 +1705,18 @@ export class QueryGenerator {
       const chosenUnion = select.unionAll[unionChoice];
 
       // Check if this unionAll option has forEach
-      if ((chosenUnion.forEach || chosenUnion.forEachOrNull) && forEachContextMap) {
+      if (
+        (chosenUnion.forEach || chosenUnion.forEachOrNull) &&
+        forEachContextMap
+      ) {
         const unionForEachContext = forEachContextMap.get(chosenUnion);
         if (unionForEachContext && chosenUnion.column) {
           // Use the forEach context for columns
-          this.addColumnsToList(chosenUnion.column, columnParts, unionForEachContext);
+          this.addColumnsToList(
+            chosenUnion.column,
+            columnParts,
+            unionForEachContext,
+          );
         }
       } else if (chosenUnion.column) {
         // No forEach, use the parent context
@@ -1125,7 +1765,6 @@ export class QueryGenerator {
     return columnParts;
   }
 
-
   /**
    * Collect all column definitions from select elements.
    */
@@ -1159,14 +1798,31 @@ export class QueryGenerator {
   /**
    * Extract the value from a ViewDefinitionConstant.
    */
-  private getConstantValue(constant: ViewDefinitionConstant): string | number | boolean | null {
+  private getConstantValue(
+    constant: ViewDefinitionConstant,
+  ): string | number | boolean | null {
     // Check all possible simple value types (primitives only, not complex types)
     const primitiveKeys: (keyof ViewDefinitionConstant)[] = [
-      "valueString", "valueInteger", "valueDecimal", "valueBoolean",
-      "valueDate", "valueDateTime", "valueTime", "valueInstant",
-      "valueCode", "valueId", "valueUri", "valueUrl",
-      "valueCanonical", "valueUuid", "valueOid", "valueMarkdown",
-      "valueBase64Binary", "valuePositiveInt", "valueUnsignedInt", "valueInteger64",
+      "valueString",
+      "valueInteger",
+      "valueDecimal",
+      "valueBoolean",
+      "valueDate",
+      "valueDateTime",
+      "valueTime",
+      "valueInstant",
+      "valueCode",
+      "valueId",
+      "valueUri",
+      "valueUrl",
+      "valueCanonical",
+      "valueUuid",
+      "valueOid",
+      "valueMarkdown",
+      "valueBase64Binary",
+      "valuePositiveInt",
+      "valueUnsignedInt",
+      "valueInteger64",
     ];
 
     for (const key of primitiveKeys) {
