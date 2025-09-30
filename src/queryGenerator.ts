@@ -12,6 +12,7 @@ import {
   TranspilationResult,
   ViewDefinition,
   ViewDefinitionColumn,
+  ViewDefinitionConstant,
   ViewDefinitionSelect,
   ViewDefinitionWhere,
 } from "./types.js";
@@ -103,14 +104,17 @@ export class QueryGenerator {
     context: TranspilerContext,
   ): string {
     // Check if we have forEach operations that need CROSS APPLY
-    const forEachSelects = this.getForEachSelects(combination.selects);
+    // Only find top-level forEach - nested forEach are handled recursively
+    const topLevelForEachSelects = combination.selects.filter(
+      (s) => s.forEach ?? s.forEachOrNull,
+    );
 
-    if (forEachSelects.length > 0) {
+    if (topLevelForEachSelects.length > 0) {
       return this.generateForEachStatement(
         combination,
         viewDef,
         context,
-        forEachSelects,
+        topLevelForEachSelects,
       );
     } else {
       return this.generateSimpleStatement(combination, viewDef, context);
@@ -129,7 +133,7 @@ export class QueryGenerator {
       combination,
       context,
     );
-    const fromClause = this.generateFromClause(viewDef, context);
+    const fromClause = this.generateFromClause(context);
     const resourceTypeFilter = this.generateResourceTypeFilter(viewDef, context);
     const whereClause = this.generateWhereClause(viewDef.where, context);
 
@@ -159,20 +163,36 @@ export class QueryGenerator {
     context: TranspilerContext,
     forEachSelects: ViewDefinitionSelect[],
   ): string {
-    const fromClause = this.generateFromClause(viewDef, context);
+    const fromClause = this.generateFromClause(context);
+    const forEachContextMap = this.buildForEachContextMap(forEachSelects, context);
+    const applyClauses = this.buildApplyClauses(forEachContextMap, combination);
+    const selectClause = this.generateForEachSelectClause(
+      combination,
+      context,
+      forEachContextMap,
+    );
 
-    // Generate CROSS APPLY clauses hierarchically and create a mapping of forEach → alias
+    return this.assembleForEachStatement(
+      selectClause,
+      fromClause,
+      applyClauses,
+      viewDef,
+      context,
+    );
+  }
+
+  /**
+   * Build the forEach context map by generating contexts for all forEach in original order.
+   * Only processes top-level forEach - nested forEach are handled recursively.
+   */
+  private buildForEachContextMap(
+    topLevelForEachSelects: ViewDefinitionSelect[],
+    context: TranspilerContext,
+  ): Map<ViewDefinitionSelect, TranspilerContext> {
     const forEachContextMap = new Map<ViewDefinitionSelect, TranspilerContext>();
     const counterState = { value: 0 };
 
-    // Use the forEachSelects parameter which includes all forEach (top-level and nested)
-    // Filter to only those at the top level of combination.selects for context generation
-    const topLevelForEach = combination.selects.filter(
-      (select) => select.forEach || select.forEachOrNull,
-    );
-
-    // First pass: generate contexts for all forEach in original order to assign aliases
-    for (const select of forEachSelects) {
+    for (const select of topLevelForEachSelects) {
       this.generateForEachClauses(
         select,
         context.resourceAlias + ".json",
@@ -182,12 +202,25 @@ export class QueryGenerator {
       );
     }
 
-    // Second pass: generate CROSS APPLY clauses in reverse order
-    // This makes the last forEach in the select array the innermost CROSS APPLY (inner loop)
-    const applyClauses = [...forEachSelects]
+    return forEachContextMap;
+  }
+
+  /**
+   * Build CROSS APPLY clauses in reverse order for forEach processing.
+   * Only processes top-level forEach - nested forEach are handled recursively.
+   */
+  private buildApplyClauses(
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+    combination: SelectCombination,
+  ): string {
+    // Only process top-level forEach from combination.selects
+    const topLevelForEach = combination.selects.filter(
+      (s) => s.forEach ?? s.forEachOrNull,
+    );
+
+    return [...topLevelForEach]
       .reverse()
       .map((select) => {
-        // Look up the pre-generated context
         const forEachContext = forEachContextMap.get(select);
         if (!forEachContext) {
           throw new Error("forEach context not found");
@@ -195,22 +228,23 @@ export class QueryGenerator {
         return this.generateForEachClause(select, forEachContext, forEachContextMap, combination);
       })
       .join("");
+  }
 
-    // Generate SELECT clause with all columns, including forEach columns
-    // Use original order for columns to match the ViewDefinition order
-    const selectClause = this.generateForEachSelectClause(
-      combination,
-      context,
-      forEachSelects,
-      forEachContextMap,
-    );
-
+  /**
+   * Assemble the final forEach statement with WHERE clause.
+   */
+  private assembleForEachStatement(
+    selectClause: string,
+    fromClause: string,
+    applyClauses: string,
+    viewDef: ViewDefinition,
+    context: TranspilerContext,
+  ): string {
     const resourceTypeFilter = this.generateResourceTypeFilter(viewDef, context);
     const whereClause = this.generateWhereClause(viewDef.where, context);
 
     let statement = `${selectClause}\n${fromClause}${applyClauses}`;
 
-    // Build WHERE clause combining resource type filter and view-level filters
     const whereConditions = [resourceTypeFilter];
     if (whereClause) {
       whereConditions.push(whereClause);
@@ -234,65 +268,147 @@ export class QueryGenerator {
     forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
     counterState: { value: number },
   ): string {
+    const applyAlias = `forEach_${counterState.value++}`;
+    const clause = this.buildForEachClause(forEachSelect, sourceExpression, applyAlias);
+    const forEachContext = this.createForEachContext(
+      baseContext,
+      applyAlias,
+      sourceExpression,
+      forEachSelect,
+    );
+
+    forEachContextMap.set(forEachSelect, forEachContext);
+
+    const nestedClauses = this.generateNestedForEachClauses(
+      forEachSelect,
+      applyAlias,
+      forEachContext,
+      forEachContextMap,
+      counterState,
+    );
+
+    return clause + nestedClauses;
+  }
+
+  /**
+   * Build the CROSS APPLY or OUTER APPLY clause for a forEach.
+   */
+  private buildForEachClause(
+    forEachSelect: ViewDefinitionSelect,
+    sourceExpression: string,
+    applyAlias: string,
+  ): string {
     const forEachPath = forEachSelect.forEach ?? forEachSelect.forEachOrNull;
     const isOrNull = !!forEachSelect.forEachOrNull;
-    const applyAlias = `forEach_${counterState.value++}`;
+    const applyType = isOrNull ? "OUTER APPLY" : "CROSS APPLY";
 
-    // Generate CROSS APPLY or OUTER APPLY using the provided source expression
-    let clause: string;
-    if (isOrNull) {
-      clause = `\nOUTER APPLY OPENJSON(${sourceExpression}, '$.${forEachPath}') AS ${applyAlias}`;
-    } else {
-      clause = `\nCROSS APPLY OPENJSON(${sourceExpression}, '$.${forEachPath}') AS ${applyAlias}`;
-    }
+    return `\n${applyType} OPENJSON(${sourceExpression}, '$.${forEachPath}') AS ${applyAlias}`;
+  }
 
-    // Create a context specific to this forEach
-    const forEachContext: TranspilerContext = {
+  /**
+   * Create a transpiler context specific to a forEach.
+   */
+  private createForEachContext(
+    baseContext: TranspilerContext,
+    applyAlias: string,
+    sourceExpression: string,
+    forEachSelect: ViewDefinitionSelect,
+  ): TranspilerContext {
+    const forEachPath = forEachSelect.forEach ?? forEachSelect.forEachOrNull;
+
+    return {
       ...baseContext,
       iterationContext: `${applyAlias}.value`,
       currentForEachAlias: applyAlias,
       forEachSource: sourceExpression,
       forEachPath: `$.${forEachPath}`,
     };
+  }
 
-    forEachContextMap.set(forEachSelect, forEachContext);
+  /**
+   * Generate nested forEach clauses within this forEach's select and unionAll options.
+   */
+  private generateNestedForEachClauses(
+    forEachSelect: ViewDefinitionSelect,
+    applyAlias: string,
+    baseContext: TranspilerContext,
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+    counterState: { value: number },
+  ): string {
+    let nestedClauses = "";
 
-    // Process nested forEach within this forEach's select
     if (forEachSelect.select) {
-      const nestedClauses = forEachSelect.select
-        .filter((nestedSelect) => nestedSelect.forEach || nestedSelect.forEachOrNull)
-        .map((nestedSelect) =>
-          // Nested forEach should use this forEach's .value as the source
-          this.generateForEachClauses(
-            nestedSelect,
-            `${applyAlias}.value`,
-            baseContext,
-            forEachContextMap,
-            counterState,
-          ),
-        )
-        .join("");
-
-      clause += nestedClauses;
+      nestedClauses += this.generateNestedSelectForEachClauses(
+        forEachSelect.select,
+        applyAlias,
+        baseContext,
+        forEachContextMap,
+        counterState,
+      );
     }
 
-    // Process nested forEach within this forEach's unionAll options
     if (forEachSelect.unionAll) {
-      for (const unionOption of forEachSelect.unionAll) {
-        if (unionOption.forEach || unionOption.forEachOrNull) {
-          // Nested forEach within unionAll should use this forEach's .value as the source
-          clause += this.generateForEachClauses(
-            unionOption,
-            `${applyAlias}.value`,
-            baseContext,
-            forEachContextMap,
-            counterState,
-          );
-        }
+      nestedClauses += this.generateNestedUnionAllForEachClauses(
+        forEachSelect.unionAll,
+        applyAlias,
+        baseContext,
+        forEachContextMap,
+        counterState,
+      );
+    }
+
+    return nestedClauses;
+  }
+
+  /**
+   * Generate forEach clauses for nested selects.
+   */
+  private generateNestedSelectForEachClauses(
+    nestedSelects: ViewDefinitionSelect[],
+    applyAlias: string,
+    forEachContext: TranspilerContext,
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+    counterState: { value: number },
+  ): string {
+    return nestedSelects
+      .filter((nestedSelect) => nestedSelect.forEach ?? nestedSelect.forEachOrNull)
+      .map((nestedSelect) =>
+        this.generateForEachClauses(
+          nestedSelect,
+          `${applyAlias}.value`,
+          forEachContext,
+          forEachContextMap,
+          counterState,
+        ),
+      )
+      .join("");
+  }
+
+  /**
+   * Generate forEach clauses for nested unionAll options.
+   */
+  private generateNestedUnionAllForEachClauses(
+    unionAllOptions: ViewDefinitionSelect[],
+    applyAlias: string,
+    forEachContext: TranspilerContext,
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+    counterState: { value: number },
+  ): string {
+    let clauses = "";
+
+    for (const unionOption of unionAllOptions) {
+      if (unionOption.forEach || unionOption.forEachOrNull) {
+        clauses += this.generateForEachClauses(
+          unionOption,
+          `${applyAlias}.value`,
+          forEachContext,
+          forEachContextMap,
+          counterState,
+        );
       }
     }
 
-    return clause;
+    return clauses;
   }
 
   /**
@@ -306,54 +422,109 @@ export class QueryGenerator {
     forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
     combination?: SelectCombination,
   ): string {
+    const clause = this.buildApplyClause(forEachSelect, forEachContext);
+    const nestedSelectClauses = this.processNestedSelectClauses(
+      forEachSelect,
+      forEachContextMap,
+      combination,
+    );
+    const nestedUnionClauses = this.processNestedUnionAllClauses(
+      forEachSelect,
+      forEachContextMap,
+      combination,
+    );
+
+    return clause + nestedSelectClauses + nestedUnionClauses;
+  }
+
+  /**
+   * Build the APPLY clause for a forEach using its pre-generated context.
+   */
+  private buildApplyClause(
+    forEachSelect: ViewDefinitionSelect,
+    forEachContext: TranspilerContext,
+  ): string {
     const forEachPath = forEachSelect.forEach ?? forEachSelect.forEachOrNull;
     const isOrNull = !!forEachSelect.forEachOrNull;
+    const applyType = isOrNull ? "OUTER APPLY" : "CROSS APPLY";
     const applyAlias = forEachContext.currentForEachAlias;
     const sourceExpression = forEachContext.forEachSource;
 
-    // Generate CROSS APPLY or OUTER APPLY
-    let clause: string;
-    if (isOrNull) {
-      clause = `\nOUTER APPLY OPENJSON(${sourceExpression}, '$.${forEachPath}') AS ${applyAlias}`;
-    } else {
-      clause = `\nCROSS APPLY OPENJSON(${sourceExpression}, '$.${forEachPath}') AS ${applyAlias}`;
+    return `\n${applyType} OPENJSON(${sourceExpression}, '$.${forEachPath}') AS ${applyAlias}`;
+  }
+
+  /**
+   * Process nested forEach within this forEach's select.
+   */
+  private processNestedSelectClauses(
+    forEachSelect: ViewDefinitionSelect,
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+    combination?: SelectCombination,
+  ): string {
+    if (!forEachSelect.select) {
+      return "";
     }
 
-    // Process nested forEach within this forEach's select
-    if (forEachSelect.select) {
-      const nestedClauses = forEachSelect.select
-        .filter((nestedSelect) => nestedSelect.forEach || nestedSelect.forEachOrNull)
-        .map((nestedSelect) => {
-          const nestedContext = forEachContextMap.get(nestedSelect);
-          if (!nestedContext) {
-            throw new Error("Nested forEach context not found");
-          }
-          return this.generateForEachClause(nestedSelect, nestedContext, forEachContextMap, combination);
-        })
-        .join("");
-
-      clause += nestedClauses;
-    }
-
-    // Process nested forEach within this forEach's unionAll options
-    // BUT only for the selected unionAll option in this combination
-    if (forEachSelect.unionAll && combination) {
-      // Find which unionAll option is selected for this forEach in the combination
-      const selectIndex = combination.selects.indexOf(forEachSelect);
-      const selectedUnionIndex = selectIndex >= 0 ? combination.unionChoices[selectIndex] : -1;
-
-      if (selectedUnionIndex >= 0 && selectedUnionIndex < forEachSelect.unionAll.length) {
-        const selectedUnionOption = forEachSelect.unionAll[selectedUnionIndex];
-        if (selectedUnionOption.forEach || selectedUnionOption.forEachOrNull) {
-          const nestedContext = forEachContextMap.get(selectedUnionOption);
-          if (nestedContext) {
-            clause += this.generateForEachClause(selectedUnionOption, nestedContext, forEachContextMap, combination);
-          }
+    return forEachSelect.select
+      .filter((nestedSelect) => nestedSelect.forEach ?? nestedSelect.forEachOrNull)
+      .map((nestedSelect) => {
+        const nestedContext = forEachContextMap.get(nestedSelect);
+        if (!nestedContext) {
+          throw new Error("Nested forEach context not found");
         }
-      }
+        return this.generateForEachClause(nestedSelect, nestedContext, forEachContextMap, combination);
+      })
+      .join("");
+  }
+
+  /**
+   * Process nested forEach within this forEach's unionAll options.
+   */
+  private processNestedUnionAllClauses(
+    forEachSelect: ViewDefinitionSelect,
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+    combination?: SelectCombination,
+  ): string {
+    if (!forEachSelect.unionAll || !combination) {
+      return "";
     }
 
-    return clause;
+    const selectedUnionOption = this.getSelectedUnionOption(forEachSelect, combination);
+    if (!selectedUnionOption) {
+      return "";
+    }
+
+    if (!(selectedUnionOption.forEach || selectedUnionOption.forEachOrNull)) {
+      return "";
+    }
+
+    const nestedContext = forEachContextMap.get(selectedUnionOption);
+    if (!nestedContext) {
+      return "";
+    }
+
+    return this.generateForEachClause(selectedUnionOption, nestedContext, forEachContextMap, combination);
+  }
+
+  /**
+   * Get the selected unionAll option for a forEach in a combination.
+   */
+  private getSelectedUnionOption(
+    forEachSelect: ViewDefinitionSelect,
+    combination: SelectCombination,
+  ): ViewDefinitionSelect | null {
+    if (!forEachSelect.unionAll) {
+      return null;
+    }
+
+    const selectIndex = combination.selects.indexOf(forEachSelect);
+    const selectedUnionIndex = selectIndex >= 0 ? combination.unionChoices[selectIndex] : -1;
+
+    if (selectedUnionIndex < 0 || selectedUnionIndex >= forEachSelect.unionAll.length) {
+      return null;
+    }
+
+    return forEachSelect.unionAll[selectedUnionIndex];
   }
 
   /**
@@ -362,7 +533,6 @@ export class QueryGenerator {
   private generateForEachSelectClause(
     combination: SelectCombination,
     context: TranspilerContext,
-    forEachSelects: ViewDefinitionSelect[],
     forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
   ): string {
     const columnParts: string[] = [];
@@ -371,7 +541,7 @@ export class QueryGenerator {
 
     // Only process top-level forEach (not nested ones)
     const topLevelForEachSelects = combination.selects.filter(
-      (s) => s.forEach || s.forEachOrNull,
+      (s) => s.forEach ?? s.forEachOrNull,
     );
     this.addForEachColumns(topLevelForEachSelects, columnParts, forEachContextMap, combination);
 
@@ -461,68 +631,76 @@ export class QueryGenerator {
     forEachContextMap?: Map<ViewDefinitionSelect, TranspilerContext>,
   ): void {
     for (const nestedSelect of nestedSelects) {
-      // If this nested select has forEach, use its specific context from the map
-      if ((nestedSelect.forEach || nestedSelect.forEachOrNull) && forEachContextMap) {
-        const nestedForEachContext = forEachContextMap.get(nestedSelect);
-        if (nestedForEachContext) {
-          // Add columns from this nested forEach using its own context
-          if (nestedSelect.column) {
-            this.addColumnsToList(nestedSelect.column, columnParts, nestedForEachContext);
-          }
-          // Recursively handle further nested selects
-          if (nestedSelect.select) {
-            this.addNestedForEachColumns(
-              nestedSelect.select,
-              columnParts,
-              nestedForEachContext,
-              forEachContextMap,
-            );
-          }
-        }
+      if (this.isForEachSelect(nestedSelect) && forEachContextMap) {
+        this.processNestedForEachSelect(nestedSelect, columnParts, forEachContextMap);
       } else {
-        // Regular nested column (not forEach)
-        if (nestedSelect.column) {
-          this.addColumnsToList(nestedSelect.column, columnParts, parentContext);
-        }
-        // Recursively handle nested selects
-        if (nestedSelect.select) {
-          this.addNestedForEachColumns(
-            nestedSelect.select,
-            columnParts,
-            parentContext,
-            forEachContextMap,
-          );
-        }
+        this.processRegularNestedSelect(nestedSelect, columnParts, parentContext, forEachContextMap);
       }
     }
   }
 
   /**
-   * Get all selects that have forEach or forEachOrNull, recursively.
+   * Check if a select is a forEach or forEachOrNull.
    */
-  private getForEachSelects(
-    selects: ViewDefinitionSelect[],
-  ): ViewDefinitionSelect[] {
-    const forEachSelects: ViewDefinitionSelect[] = [];
-
-    for (const select of selects) {
-      if (select.forEach || select.forEachOrNull) {
-        forEachSelects.push(select);
-      }
-      if (select.select) {
-        forEachSelects.push(...this.getForEachSelects(select.select));
-      }
-    }
-
-    return forEachSelects;
+  private isForEachSelect(select: ViewDefinitionSelect): boolean {
+    return !!(select.forEach ?? select.forEachOrNull);
   }
 
+  /**
+   * Process a nested select that is a forEach.
+   */
+  private processNestedForEachSelect(
+    nestedSelect: ViewDefinitionSelect,
+    columnParts: string[],
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+  ): void {
+    const nestedForEachContext = forEachContextMap.get(nestedSelect);
+    if (!nestedForEachContext) {
+      return;
+    }
+
+    if (nestedSelect.column) {
+      this.addColumnsToList(nestedSelect.column, columnParts, nestedForEachContext);
+    }
+
+    if (nestedSelect.select) {
+      this.addNestedForEachColumns(
+        nestedSelect.select,
+        columnParts,
+        nestedForEachContext,
+        forEachContextMap,
+      );
+    }
+  }
+
+  /**
+   * Process a regular nested select (not forEach).
+   */
+  private processRegularNestedSelect(
+    nestedSelect: ViewDefinitionSelect,
+    columnParts: string[],
+    parentContext: TranspilerContext,
+    forEachContextMap?: Map<ViewDefinitionSelect, TranspilerContext>,
+  ): void {
+    if (nestedSelect.column) {
+      this.addColumnsToList(nestedSelect.column, columnParts, parentContext);
+    }
+
+    if (nestedSelect.select) {
+      this.addNestedForEachColumns(
+        nestedSelect.select,
+        columnParts,
+        parentContext,
+        forEachContextMap,
+      );
+    }
+  }
 
   /**
    * Create the base transpiler context.
    */
   private createBaseContext(viewDef: ViewDefinition): TranspilerContext {
-    const constants: { [key: string]: any } = {};
+    const constants: { [key: string]: string | number | boolean | null } = {};
 
     if (viewDef.constant) {
       for (const constant of viewDef.constant) {
@@ -653,7 +831,6 @@ export class QueryGenerator {
    * Generate the FROM clause.
    */
   private generateFromClause(
-    viewDef: ViewDefinition,
     context: TranspilerContext,
   ): string {
     const tableName = `[${this.options.schemaName}].[${this.options.tableName}]`;
@@ -913,45 +1090,21 @@ export class QueryGenerator {
   /**
    * Extract the value from a ViewDefinitionConstant.
    */
-  private getConstantValue(constant: any): any {
-    // Check all possible value types
-    const valueProperties = [
-      "valueString",
-      "valueInteger",
-      "valueDecimal",
-      "valueBoolean",
-      "valueDate",
-      "valueDateTime",
-      "valueTime",
-      "valueInstant",
-      "valueCode",
-      "valueId",
-      "valueUri",
-      "valueUrl",
-      "valueCanonical",
-      "valueUuid",
-      "valueOid",
-      "valueMarkdown",
-      "valueBase64Binary",
-      "valuePositiveInt",
-      "valueUnsignedInt",
-      "valueInteger64",
+  private getConstantValue(constant: ViewDefinitionConstant): string | number | boolean | null {
+    // Check all possible simple value types (primitives only, not complex types)
+    const primitiveKeys: (keyof ViewDefinitionConstant)[] = [
+      "valueString", "valueInteger", "valueDecimal", "valueBoolean",
+      "valueDate", "valueDateTime", "valueTime", "valueInstant",
+      "valueCode", "valueId", "valueUri", "valueUrl",
+      "valueCanonical", "valueUuid", "valueOid", "valueMarkdown",
+      "valueBase64Binary", "valuePositiveInt", "valueUnsignedInt", "valueInteger64",
     ];
 
-    for (const prop of valueProperties) {
-      if (constant[prop] !== undefined) {
-        return constant[prop];
+    for (const key of primitiveKeys) {
+      const value = constant[key];
+      if (value !== undefined) {
+        return value as string | number | boolean;
       }
-    }
-
-    // Check for complex types
-    const complexType =
-      constant.valueCodeableConcept ??
-      constant.valueCoding ??
-      constant.valueQuantity ??
-      constant.valueReference;
-    if (complexType) {
-      return complexType;
     }
 
     return null;
