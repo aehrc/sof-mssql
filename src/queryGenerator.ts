@@ -166,20 +166,37 @@ export class QueryGenerator {
     const counterState = { value: 0 };
 
     // Process only top-level forEach from the combination
-    const applyClauses = combination.selects
-      .filter((select) => select.forEach || select.forEachOrNull)
-      .map((select) =>
-        this.generateForEachClauses(
-          select,
-          context.resourceAlias + ".json",
-          context,
-          forEachContextMap,
-          counterState,
-        ),
-      )
+    const topLevelForEach = combination.selects.filter(
+      (select) => select.forEach || select.forEachOrNull,
+    );
+
+    // First pass: generate contexts for all forEach in original order to assign aliases
+    for (const select of topLevelForEach) {
+      this.generateForEachClauses(
+        select,
+        context.resourceAlias + ".json",
+        context,
+        forEachContextMap,
+        counterState,
+      );
+    }
+
+    // Second pass: generate CROSS APPLY clauses in reverse order
+    // This makes the last forEach in the select array the innermost CROSS APPLY (inner loop)
+    const applyClauses = [...topLevelForEach]
+      .reverse()
+      .map((select) => {
+        // Look up the pre-generated context
+        const forEachContext = forEachContextMap.get(select);
+        if (!forEachContext) {
+          throw new Error("forEach context not found");
+        }
+        return this.generateForEachClause(select, forEachContext, forEachContextMap, combination);
+      })
       .join("");
 
     // Generate SELECT clause with all columns, including forEach columns
+    // Use original order for columns to match the ViewDefinition order
     const selectClause = this.generateForEachSelectClause(
       combination,
       context,
@@ -258,6 +275,83 @@ export class QueryGenerator {
       clause += nestedClauses;
     }
 
+    // Process nested forEach within this forEach's unionAll options
+    if (forEachSelect.unionAll) {
+      for (const unionOption of forEachSelect.unionAll) {
+        if (unionOption.forEach || unionOption.forEachOrNull) {
+          // Nested forEach within unionAll should use this forEach's .value as the source
+          clause += this.generateForEachClauses(
+            unionOption,
+            `${applyAlias}.value`,
+            baseContext,
+            forEachContextMap,
+            counterState,
+          );
+        }
+      }
+    }
+
+    return clause;
+  }
+
+  /**
+   * Generate CROSS APPLY clauses for a forEach and its nested forEach using pre-generated contexts.
+   * This is used when we need to generate CROSS APPLY clauses in a different order
+   * than context generation.
+   */
+  private generateForEachClause(
+    forEachSelect: ViewDefinitionSelect,
+    forEachContext: TranspilerContext,
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+    combination?: SelectCombination,
+  ): string {
+    const forEachPath = forEachSelect.forEach ?? forEachSelect.forEachOrNull;
+    const isOrNull = !!forEachSelect.forEachOrNull;
+    const applyAlias = forEachContext.currentForEachAlias;
+    const sourceExpression = forEachContext.forEachSource;
+
+    // Generate CROSS APPLY or OUTER APPLY
+    let clause: string;
+    if (isOrNull) {
+      clause = `\nOUTER APPLY OPENJSON(${sourceExpression}, '$.${forEachPath}') AS ${applyAlias}`;
+    } else {
+      clause = `\nCROSS APPLY OPENJSON(${sourceExpression}, '$.${forEachPath}') AS ${applyAlias}`;
+    }
+
+    // Process nested forEach within this forEach's select
+    if (forEachSelect.select) {
+      const nestedClauses = forEachSelect.select
+        .filter((nestedSelect) => nestedSelect.forEach || nestedSelect.forEachOrNull)
+        .map((nestedSelect) => {
+          const nestedContext = forEachContextMap.get(nestedSelect);
+          if (!nestedContext) {
+            throw new Error("Nested forEach context not found");
+          }
+          return this.generateForEachClause(nestedSelect, nestedContext, forEachContextMap, combination);
+        })
+        .join("");
+
+      clause += nestedClauses;
+    }
+
+    // Process nested forEach within this forEach's unionAll options
+    // BUT only for the selected unionAll option in this combination
+    if (forEachSelect.unionAll && combination) {
+      // Find which unionAll option is selected for this forEach in the combination
+      const selectIndex = combination.selects.indexOf(forEachSelect);
+      const selectedUnionIndex = selectIndex >= 0 ? combination.unionChoices[selectIndex] : -1;
+
+      if (selectedUnionIndex >= 0 && selectedUnionIndex < forEachSelect.unionAll.length) {
+        const selectedUnionOption = forEachSelect.unionAll[selectedUnionIndex];
+        if (selectedUnionOption.forEach || selectedUnionOption.forEachOrNull) {
+          const nestedContext = forEachContextMap.get(selectedUnionOption);
+          if (nestedContext) {
+            clause += this.generateForEachClause(selectedUnionOption, nestedContext, forEachContextMap, combination);
+          }
+        }
+      }
+    }
+
     return clause;
   }
 
@@ -278,7 +372,7 @@ export class QueryGenerator {
     const topLevelForEachSelects = combination.selects.filter(
       (s) => s.forEach || s.forEachOrNull,
     );
-    this.addForEachColumns(topLevelForEachSelects, columnParts, forEachContextMap);
+    this.addForEachColumns(topLevelForEachSelects, columnParts, forEachContextMap, combination);
 
     return `SELECT\n  ${columnParts.join(",\n  ")}`;
   }
@@ -305,13 +399,36 @@ export class QueryGenerator {
   /**
    * Add top-level forEach columns to the column parts.
    * Only processes forEach that are direct children of the combination, not nested forEach.
+   * Columns are added in reverse order to match the reversed CROSS APPLY order.
    */
   private addForEachColumns(
     topLevelForEachSelects: ViewDefinitionSelect[],
     columnParts: string[],
     forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+    combination: SelectCombination,
   ): void {
-    for (const forEachSelect of topLevelForEachSelects) {
+    // Reverse the order to match the reversed CROSS APPLY clause order
+    const reversedForEach = [...topLevelForEachSelects].reverse();
+
+    // First pass: Add unionAll columns first (they come before parent columns)
+    for (const forEachSelect of reversedForEach) {
+      const forEachContext = forEachContextMap.get(forEachSelect);
+      if (!forEachContext) {
+        throw new Error("forEach context not found in map");
+      }
+
+      // Find the index of this forEach in the original combination.selects array
+      const originalIndex = combination.selects.indexOf(forEachSelect);
+      const unionChoice = originalIndex >= 0 ? combination.unionChoices[originalIndex] : -1;
+
+      // Handle unionAll for forEach
+      if (unionChoice >= 0) {
+        this.addUnionAllColumns(forEachSelect, unionChoice, columnParts, forEachContext, forEachContextMap);
+      }
+    }
+
+    // Second pass: Add parent columns and nested select columns after unionAll
+    for (const forEachSelect of reversedForEach) {
       const forEachContext = forEachContextMap.get(forEachSelect);
       if (!forEachContext) {
         throw new Error("forEach context not found in map");
@@ -698,6 +815,7 @@ export class QueryGenerator {
     unionChoice: number,
     columnParts: string[],
     context: TranspilerContext,
+    forEachContextMap?: Map<ViewDefinitionSelect, TranspilerContext>,
   ): void {
     if (
       select.unionAll &&
@@ -705,7 +823,16 @@ export class QueryGenerator {
       unionChoice < select.unionAll.length
     ) {
       const chosenUnion = select.unionAll[unionChoice];
-      if (chosenUnion.column) {
+
+      // Check if this unionAll option has forEach
+      if ((chosenUnion.forEach || chosenUnion.forEachOrNull) && forEachContextMap) {
+        const unionForEachContext = forEachContextMap.get(chosenUnion);
+        if (unionForEachContext && chosenUnion.column) {
+          // Use the forEach context for columns
+          this.addColumnsToList(chosenUnion.column, columnParts, unionForEachContext);
+        }
+      } else if (chosenUnion.column) {
+        // No forEach, use the parent context
         this.addColumnsToList(chosenUnion.column, columnParts, context);
       }
     }

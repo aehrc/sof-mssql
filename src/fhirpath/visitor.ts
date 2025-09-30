@@ -484,8 +484,8 @@ export class FHIRPathToTSqlVisitor
         // Special handling for FHIR array fields
         // Only add [0] when NOT in a forEach iteration context
         // In forEach, we're already at the element level, so arrays within elements are accessed directly
+        // Note: "name" is excluded because it's an array at Patient level but an object within Contact
         const knownArrayFields = [
-          "name",
           "telecom",
           "address",
           "identifier",
@@ -493,19 +493,36 @@ export class FHIRPathToTSqlVisitor
           "contact",
         ];
         const pathParts = existingPath.split(".");
-        // Check if we're accessing one of the forEach paths directly
-        // In that case, don't add [0] because the forEach handles the iteration
-        const isForEachPath =
-          this.context.forEachPath &&
-          pathParts.length >= 2 &&
-          this.context.forEachPath.includes(pathParts[1]);
 
-        if (
-          pathParts.length >= 2 &&
-          knownArrayFields.includes(pathParts[1]) &&
-          !existingPath.includes("[") &&
-          !isForEachPath
-        ) {
+        // Determine if we should add [0] for this array field
+        // We should NOT add [0] if:
+        // 1. We're in a forEach context AND
+        // 2. The field is actually the forEach collection itself (not a nested array)
+        //
+        // For example:
+        // - forEach on "contact", accessing "name.family": "name" is NOT an array in contact
+        // - forEach on "contact", accessing "telecom.system": "telecom" IS an array in contact, so add [0]
+        // - forEach on "name", accessing "family": we're iterating names, don't add [0] to name itself
+
+        let shouldAddArrayIndex = false;
+
+        if (pathParts.length >= 2 && !existingPath.includes("[")) {
+          const fieldName = pathParts[1];
+
+          // Check if this field is in the known array fields list
+          if (knownArrayFields.includes(fieldName)) {
+            // Don't add [0] if this is the forEach array itself
+            shouldAddArrayIndex = !(
+              this.context.forEachPath && this.context.forEachPath.endsWith(fieldName)
+            );
+          } else if (fieldName === "name") {
+            // "name" is special: it's an array in Patient but an object in Contact
+            // Only add [0] for "name" when NOT in a forEach context
+            shouldAddArrayIndex = !this.context.iterationContext;
+          }
+        }
+
+        if (shouldAddArrayIndex) {
           const newPath = `${pathParts[0]}.${pathParts[1]}[0].${memberName}`;
           return `JSON_VALUE(${source}, '${newPath}')`;
         } else {
