@@ -1787,8 +1787,10 @@ export class QueryGenerator {
         columns.push(...this.collectAllColumns(select.select));
       }
 
-      if (select.unionAll) {
-        columns.push(...this.collectAllColumns(select.unionAll));
+      if (select.unionAll && select.unionAll.length > 0) {
+        // Only collect columns from the first branch since all branches
+        // must have the same column structure per SQL-on-FHIR spec
+        columns.push(...this.collectAllColumns([select.unionAll[0]]));
       }
     }
 
