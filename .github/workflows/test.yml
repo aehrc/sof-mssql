@@ -2,9 +2,7 @@ name: SQL on FHIR Tests
 
 on:
   push:
-    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
 
 jobs:
   test:
