@@ -15,7 +15,7 @@ jobs:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:2019-latest
         env:
-          SA_PASSWORD: ${{ secrets.SA_PASSWORD || 'TestPassword123!' }}
+          SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
           ACCEPT_EULA: Y
         ports:
           - 1433:1433
@@ -35,7 +35,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '22'
         cache: 'npm'
 
     - name: Install dependencies
@@ -43,6 +43,12 @@ jobs:
 
     - name: Build project
       run: npm run build
+
+    - name: Run lint
+      run: npm run lint
+
+    - name: Check formatting
+      run: npm run format:check
 
     - name: Wait for SQL Server
       run: |
@@ -55,23 +61,24 @@ jobs:
           sleep 2
         done
       env:
-        SA_PASSWORD: ${{ secrets.SA_PASSWORD || 'TestPassword123!' }}
+        SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
 
     - name: Create test database
       run: |
         sqlcmd -S localhost -U sa -P "${SA_PASSWORD}" -Q "CREATE DATABASE testdb"
         echo "Test database created successfully"
       env:
-        SA_PASSWORD: ${{ secrets.SA_PASSWORD || 'TestPassword123!' }}
+        SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
 
     - name: Run tests
-      run: npx tsx src/cli.ts test ./sqlonfhir/tests
+      run: npm test
       env:
+        SQLONFHIR_TEST_PATH: ./sqlonfhir/tests
         MSSQL_HOST: localhost
         MSSQL_PORT: 1433
         MSSQL_DATABASE: testdb
         MSSQL_USER: sa
-        MSSQL_PASSWORD: ${{ secrets.SA_PASSWORD || 'TestPassword123!' }}
+        MSSQL_PASSWORD: ${{ secrets.SA_PASSWORD }}
         MSSQL_ENCRYPT: true
         MSSQL_TRUST_CERT: true
 
@@ -127,12 +134,19 @@ jobs:
     - name: Build project
       run: npm run build
 
+    - name: Run lint
+      run: npm run lint
+
+    - name: Check formatting
+      run: npm run format:check
+
     - name: Create test database
       run: sqlcmd -S localhost -U sa -P "TestPassword123!" -Q "CREATE DATABASE testdb"
 
     - name: Run tests
-      run: npx tsx src/cli.ts test ./sqlonfhir/tests
+      run: npm test
       env:
+        SQLONFHIR_TEST_PATH: ./sqlonfhir/tests
         MSSQL_HOST: localhost
         MSSQL_DATABASE: testdb
         MSSQL_USER: sa
