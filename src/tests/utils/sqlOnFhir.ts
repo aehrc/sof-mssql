@@ -62,7 +62,7 @@ export async function executeViewDefinition(
 
     // Extract column names from the query result metadata
     // This preserves the actual SQL column order
-    const columns = Object.keys(queryResult.columns || {});
+    const columns = Object.keys(queryResult.recordset.columns || {});
 
     // Parse JSON strings in results and return with column metadata
     return {
