@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        sql-version: ['2017-latest', '2019-latest', '2022-latest']
-    
+        sql-version: ["2017-latest", "2019-latest", "2022-latest"]
+
     services:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:${{ matrix.sql-version }}
@@ -28,39 +28,39 @@ jobs:
           --health-start-period 10s
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22'
-        cache: npm
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
 
-    - name: Install dependencies
-      run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Build project
-      run: npm run build
+      - name: Build project
+        run: npm run build
 
-    - name: Run lint
-      run: npm run lint
+      - name: Run lint
+        run: npm run lint
 
-    - name: Check formatting
-      run: npm run format:check
+      - name: Check formatting
+        run: npm run format:check
 
-    - name: Create test database
-      run: sqlcmd -S localhost -U sa -P "${SA_PASSWORD}" -Q "CREATE DATABASE testdb"
-      env:
-        SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
+      - name: Create test database
+        run: sqlcmd -S localhost -U sa -P "${SA_PASSWORD}" -Q "CREATE DATABASE testdb"
+        env:
+          SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
 
-    - name: Run tests
-      run: npm test
-      env:
-        SQLONFHIR_TEST_PATH: ./sqlonfhir/tests
-        MSSQL_HOST: localhost
-        MSSQL_DATABASE: testdb
-        MSSQL_USER: sa
-        MSSQL_PASSWORD: ${{ secrets.SA_PASSWORD }}
+      - name: Run tests
+        run: npm test
+        env:
+          SQLONFHIR_TEST_PATH: ./sqlonfhir/tests
+          MSSQL_HOST: localhost
+          MSSQL_DATABASE: testdb
+          MSSQL_USER: sa
+          MSSQL_PASSWORD: ${{ secrets.SA_PASSWORD }}

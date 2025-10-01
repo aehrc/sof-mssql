@@ -20,8 +20,8 @@
     "test:ui": "vitest --ui",
     "coverage": "vitest run --coverage",
     "lint": "eslint src/**/*.ts",
-    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\""
+    "format": "prettier --write \"src/**/*.(ts|json|yml)\" \".github/**/*.(ts|json|yml)\"",
+    "format:check": "prettier --check \"src/**/*.(ts|json|yml)\" \".github/**/*.(ts|json|yml)\""
   },
   "keywords": [
     "fhir",
