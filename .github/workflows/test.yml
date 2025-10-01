@@ -51,6 +51,13 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
+      - name: Install SQL Server command-line tools
+        run: |
+          curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
+          sudo add-apt-repository "$(wget -qO- https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list)"
+          sudo apt-get update
+          sudo apt-get install -y sqlcmd
+
       - name: Create test database
         run: sqlcmd -S localhost -U sa -P "${SA_PASSWORD}" -Q "CREATE DATABASE testdb"
         env:
