@@ -54,12 +54,14 @@ jobs:
       - name: Install SQL Server command-line tools
         run: |
           curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
-          sudo add-apt-repository "$(wget -qO- https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list)"
+          curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
           sudo apt-get update
-          sudo apt-get install -y sqlcmd
+          sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18 unixodbc-dev
+          echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bashrc
+          export PATH="$PATH:/opt/mssql-tools18/bin"
 
       - name: Create test database
-        run: sqlcmd -S localhost -U sa -P "${SA_PASSWORD}" -Q "CREATE DATABASE testdb"
+        run: sqlcmd -S localhost -U sa -P "${SA_PASSWORD}" -C -Q "CREATE DATABASE testdb"
         env:
           SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
 
