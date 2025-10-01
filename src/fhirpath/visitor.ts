@@ -464,75 +464,98 @@ export class FHIRPathToTSqlVisitor
 
     // Handle JSON_QUERY expressions (arrays)
     if (base.includes("JSON_QUERY")) {
-      const pathMatch = /JSON_QUERY\(([^,]+),\s*'([^']+)'\)/.exec(base);
-      if (pathMatch) {
-        const source = pathMatch[1];
-        const existingPath = pathMatch[2];
-        // For array access, we need to use array indexing
-        const newPath = `${existingPath}[0].${memberName}`;
-        return `JSON_VALUE(${source}, '${newPath}')`;
-      }
+      return this.handleJsonQueryMember(base, memberName);
     }
 
     // Handle JSON_VALUE expressions
     if (base.includes("JSON_VALUE")) {
-      const pathMatch = /JSON_VALUE\(([^,]+),\s*'([^']+)'\)/.exec(base);
-      if (pathMatch) {
-        const source = pathMatch[1];
-        const existingPath = pathMatch[2];
-
-        // Special handling for FHIR array fields
-        // Only add [0] when NOT in a forEach iteration context
-        // In forEach, we're already at the element level, so arrays within elements are accessed directly
-        // Note: "name" is excluded because it's an array at Patient level but an object within Contact
-        const knownArrayFields = [
-          "telecom",
-          "address",
-          "identifier",
-          "extension",
-          "contact",
-        ];
-        const pathParts = existingPath.split(".");
-
-        // Determine if we should add [0] for this array field
-        // We should NOT add [0] if:
-        // 1. We're in a forEach context AND
-        // 2. The field is actually the forEach collection itself (not a nested array)
-        //
-        // For example:
-        // - forEach on "contact", accessing "name.family": "name" is NOT an array in contact
-        // - forEach on "contact", accessing "telecom.system": "telecom" IS an array in contact, so add [0]
-        // - forEach on "name", accessing "family": we're iterating names, don't add [0] to name itself
-
-        let shouldAddArrayIndex = false;
-
-        if (pathParts.length >= 2 && !existingPath.includes("[")) {
-          const fieldName = pathParts[1];
-
-          // Check if this field is in the known array fields list
-          if (knownArrayFields.includes(fieldName)) {
-            // Don't add [0] if this is the forEach array itself
-            shouldAddArrayIndex = !(
-              this.context.forEachPath && this.context.forEachPath.endsWith(fieldName)
-            );
-          } else if (fieldName === "name") {
-            // "name" is special: it's an array in Patient but an object in Contact
-            // Only add [0] for "name" when NOT in a forEach context
-            shouldAddArrayIndex = !this.context.iterationContext;
-          }
-        }
-
-        if (shouldAddArrayIndex) {
-          const newPath = `${pathParts[0]}.${pathParts[1]}[0].${memberName}`;
-          return `JSON_VALUE(${source}, '${newPath}')`;
-        } else {
-          const newPath = `${existingPath}.${memberName}`;
-          return `JSON_VALUE(${source}, '${newPath}')`;
-        }
-      }
+      return this.handleJsonValueMember(base, memberName);
     }
 
     return `JSON_VALUE(${base}, '$.${memberName}')`;
+  }
+
+  private handleJsonQueryMember(base: string, memberName: string): string {
+    const pathMatch = /JSON_QUERY\(([^,]+),\s*'([^']+)'\)/.exec(base);
+    if (pathMatch) {
+      const source = pathMatch[1];
+      const existingPath = pathMatch[2];
+      // For array access, we need to use array indexing
+      const newPath = `${existingPath}[0].${memberName}`;
+      return `JSON_VALUE(${source}, '${newPath}')`;
+    }
+    return `JSON_VALUE(${base}, '$.${memberName}')`;
+  }
+
+  private handleJsonValueMember(base: string, memberName: string): string {
+    const pathMatch = /JSON_VALUE\(([^,]+),\s*'([^']+)'\)/.exec(base);
+    if (!pathMatch) {
+      return `JSON_VALUE(${base}, '$.${memberName}')`;
+    }
+
+    const source = pathMatch[1];
+    const existingPath = pathMatch[2];
+    const pathParts = existingPath.split(".");
+
+    const shouldAddArrayIndex = this.shouldAddArrayIndexForField(
+      pathParts,
+      existingPath,
+    );
+
+    if (shouldAddArrayIndex) {
+      const newPath = `${pathParts[0]}.${pathParts[1]}[0].${memberName}`;
+      return `JSON_VALUE(${source}, '${newPath}')`;
+    } else {
+      const newPath = `${existingPath}.${memberName}`;
+      return `JSON_VALUE(${source}, '${newPath}')`;
+    }
+  }
+
+  private shouldAddArrayIndexForField(
+    pathParts: string[],
+    existingPath: string,
+  ): boolean {
+    // Special handling for FHIR array fields
+    // Only add [0] when NOT in a forEach iteration context
+    // In forEach, we're already at the element level, so arrays within elements are accessed directly
+    // Note: "name" is excluded because it's an array at Patient level but an object within Contact
+    const knownArrayFields = [
+      "telecom",
+      "address",
+      "identifier",
+      "extension",
+      "contact",
+    ];
+
+    // Determine if we should add [0] for this array field
+    // We should NOT add [0] if:
+    // 1. We're in a forEach context AND
+    // 2. The field is actually the forEach collection itself (not a nested array)
+    //
+    // For example:
+    // - forEach on "contact", accessing "name.family": "name" is NOT an array in contact
+    // - forEach on "contact", accessing "telecom.system": "telecom" IS an array in contact, so add [0]
+    // - forEach on "name", accessing "family": we're iterating names, don't add [0] to name itself
+
+    if (pathParts.length < 2 || existingPath.includes("[")) {
+      return false;
+    }
+
+    const fieldName = pathParts[1];
+
+    // Check if this field is in the known array fields list
+    if (knownArrayFields.includes(fieldName)) {
+      // Don't add [0] if this is the forEach array itself
+      return !(
+        this.context.forEachPath?.endsWith(fieldName)
+      );
+    } else if (fieldName === "name") {
+      // "name" is special: it's an array in Patient but an object in Contact
+      // Only add [0] for "name" when NOT in a forEach context
+      return !this.context.iterationContext;
+    }
+
+    return false;
   }
 
   private handleFunctionInvocation(
