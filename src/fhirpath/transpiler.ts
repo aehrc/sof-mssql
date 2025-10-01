@@ -5,7 +5,10 @@
 
 import { CharStreams, CommonTokenStream } from "antlr4ts";
 import { fhirpathLexer } from "../generated/grammar/fhirpathLexer";
-import { EntireExpressionContext, fhirpathParser } from "../generated/grammar/fhirpathParser";
+import {
+  EntireExpressionContext,
+  fhirpathParser,
+} from "../generated/grammar/fhirpathParser";
 import { FHIRPathToTSqlVisitor, TranspilerContext } from "./visitor";
 
 // Re-export TranspilerContext from visitor
@@ -33,7 +36,10 @@ export class Transpiler {
     }
   }
 
-  private static parseExpression(expression: string): { success: boolean; tree: EntireExpressionContext | null } {
+  private static parseExpression(expression: string): {
+    success: boolean;
+    tree: EntireExpressionContext | null;
+  } {
     // Create ANTLR input stream
     const inputStream = CharStreams.fromString(expression);
 

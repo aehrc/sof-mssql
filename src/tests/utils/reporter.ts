@@ -8,7 +8,12 @@
 
 import { writeFileSync, mkdirSync } from "fs";
 import { dirname } from "path";
-import type { RunnerTestFile, RunnerTask, RunnerTaskResultPack, RunnerTaskEventPack } from "vitest";
+import type {
+  RunnerTestFile,
+  RunnerTask,
+  RunnerTaskResultPack,
+  RunnerTaskEventPack,
+} from "vitest";
 import type { Reporter } from "vitest/reporters";
 import type { TestReport, TestReportEntry } from "./runner";
 
@@ -38,7 +43,11 @@ class SqlOnFhirReporter implements Reporter {
    * Called when all tests have finished running.
    * @deprecated use onTestRunEnd instead
    */
-  onFinished(files?: RunnerTestFile[], _errors?: unknown[], _coverage?: unknown): void {
+  onFinished(
+    files?: RunnerTestFile[],
+    _errors?: unknown[],
+    _coverage?: unknown,
+  ): void {
     if (!files) return;
 
     // Collect results from global storage set by dynamic tests
@@ -70,7 +79,7 @@ class SqlOnFhirReporter implements Reporter {
       // Ensure the output directory exists
       const outputDir = dirname(outputPath);
       mkdirSync(outputDir, { recursive: true });
-      
+
       const reportJson = JSON.stringify(this.testReport, null, 2);
       writeFileSync(outputPath, reportJson, "utf8");
     } catch (error) {
@@ -87,7 +96,10 @@ class SqlOnFhirReporter implements Reporter {
       if (!file.tasks) continue;
 
       for (const task of file.tasks) {
-        if (task.type === "suite" && task.name === "SQL on FHIR compliance tests") {
+        if (
+          task.type === "suite" &&
+          task.name === "SQL on FHIR compliance tests"
+        ) {
           const suiteName = task.name;
           const suiteTests = this.collectTestsFromSuite(task);
 
@@ -107,7 +119,7 @@ class SqlOnFhirReporter implements Reporter {
   private collectTestsFromSuite(suite: RunnerTask): TestReportEntry[] {
     const tests: TestReportEntry[] = [];
 
-    if ('tasks' in suite && suite.tasks) {
+    if ("tasks" in suite && suite.tasks) {
       for (const task of suite.tasks) {
         if (task.type === "test") {
           tests.push({
@@ -137,7 +149,10 @@ class SqlOnFhirReporter implements Reporter {
   }
 
   // Optional Vitest reporter methods (can be implemented as needed)
-  onTaskUpdate?(_packs: RunnerTaskResultPack[], _events?: RunnerTaskEventPack[]): void {
+  onTaskUpdate?(
+    _packs: RunnerTaskResultPack[],
+    _events?: RunnerTaskEventPack[],
+  ): void {
     // Could be used for real-time result collection
   }
 

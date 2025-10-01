@@ -86,23 +86,25 @@ export function compareResults(
 
   // Normalize objects by sorting keys before comparing
   const normalizeObject = (obj: any): any => {
-    if (obj === null || typeof obj !== 'object') return obj;
+    if (obj === null || typeof obj !== "object") return obj;
     if (Array.isArray(obj)) return obj.map(normalizeObject);
 
     const sorted: any = {};
-    Object.keys(obj).sort().forEach(key => {
-      sorted[key] = normalizeObject(obj[key]);
-    });
+    Object.keys(obj)
+      .sort()
+      .forEach((key) => {
+        sorted[key] = normalizeObject(obj[key]);
+      });
     return sorted;
   };
 
   // Sort both arrays to ignore row ordering, using normalized objects for consistent sorting
-  const sortedActual = [...actualResults].map(normalizeObject).sort((a, b) =>
-    JSON.stringify(a).localeCompare(JSON.stringify(b)),
-  );
-  const sortedExpected = [...expectedResults].map(normalizeObject).sort((a, b) =>
-    JSON.stringify(a).localeCompare(JSON.stringify(b)),
-  );
+  const sortedActual = [...actualResults]
+    .map(normalizeObject)
+    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  const sortedExpected = [...expectedResults]
+    .map(normalizeObject)
+    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 
   // Check if lengths match
   if (sortedActual.length !== sortedExpected.length) {

@@ -1,6 +1,6 @@
 /**
  * Database setup and teardown utilities for Vitest tests.
- * 
+ *
  * Provides functions to manage database connections, table creation,
  * and test data lifecycle during Vitest test execution.
  */
@@ -23,7 +23,8 @@ const getDatabaseConfig = () => {
     password: process.env.MSSQL_PASSWORD || "",
     options: {
       encrypt: process.env.MSSQL_ENCRYPT === "false" ? false : true,
-      trustServerCertificate: process.env.MSSQL_TRUST_CERT === "false" ? false : true,
+      trustServerCertificate:
+        process.env.MSSQL_TRUST_CERT === "false" ? false : true,
     },
   };
 
@@ -64,7 +65,9 @@ export async function setupDatabase(): Promise<void> {
     // Create the table if it doesn't exist
     await createTableIfNotExists();
   } catch (error) {
-    throw new Error(`Failed to setup database: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to setup database: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
@@ -112,7 +115,9 @@ export async function setupTestData(resources: any[]): Promise<void> {
 
       await insertRequest.query(insertSql);
     } catch (error) {
-      throw new Error(`Failed to insert resource ${resource.id}: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Failed to insert resource ${resource.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 }
@@ -149,18 +154,24 @@ export async function cleanupTestData(): Promise<void> {
     // Use DELETE instead of TRUNCATE to avoid issues with foreign keys and ensure reliability
     const deleteRequest = new Request(globalPool);
     await deleteRequest.query(`DELETE FROM ${tableName}`);
-    
+
     // Verify cleanup was successful
     const verifyRequest = new Request(globalPool);
-    const verifyResult = await verifyRequest.query(`SELECT COUNT(*) as remaining_count FROM ${tableName}`);
+    const verifyResult = await verifyRequest.query(
+      `SELECT COUNT(*) as remaining_count FROM ${tableName}`,
+    );
     const remainingCount = verifyResult.recordset[0]?.remaining_count;
-    
+
     if (remainingCount > 0) {
-      throw new Error(`Failed to clean up all test data. ${remainingCount} records remaining.`);
+      throw new Error(
+        `Failed to clean up all test data. ${remainingCount} records remaining.`,
+      );
     }
   } catch (error) {
     // Don't silently ignore cleanup failures - they cause subsequent test failures
-    throw new Error(`Failed to clean up test data: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to clean up test data: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
@@ -205,7 +216,9 @@ async function createTableIfNotExists(): Promise<void> {
     const createRequest = new Request(globalPool);
     await createRequest.query(createTableSql);
   } catch (error) {
-    throw new Error(`Failed to create table: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to create table: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 

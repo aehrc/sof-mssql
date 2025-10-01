@@ -370,7 +370,11 @@ export class FHIRPathToTSqlVisitor
 
   visitTotalInvocation(_ctx: TotalInvocationContext): string {
     // $total in forEach contexts - return total count of items in current iteration
-    if (this.context.currentForEachAlias && this.context.forEachSource && this.context.forEachPath) {
+    if (
+      this.context.currentForEachAlias &&
+      this.context.forEachSource &&
+      this.context.forEachPath
+    ) {
       // Calculate total count using JSON_VALUE with array length
       // Use a subquery to count items in the JSON array
       return `(
@@ -546,9 +550,7 @@ export class FHIRPathToTSqlVisitor
     // Check if this field is in the known array fields list
     if (knownArrayFields.includes(fieldName)) {
       // Don't add [0] if this is the forEach array itself
-      return !(
-        this.context.forEachPath?.endsWith(fieldName)
-      );
+      return !this.context.forEachPath?.endsWith(fieldName);
     } else if (fieldName === "name") {
       // "name" is special: it's an array in Patient but an object in Contact
       // Only add [0] for "name" when NOT in a forEach context
@@ -736,12 +738,12 @@ export class FHIRPathToTSqlVisitor
     // If we have arguments, we need to check if that expression is empty
     if (args.length > 0) {
       const expression = args[0];
-      
+
       // If the expression is an EXISTS clause, we need to negate it
       if (expression.includes("EXISTS")) {
         return `(NOT ${expression})`;
       }
-      
+
       return `(CASE 
         WHEN ${expression} IS NULL THEN 1
         WHEN JSON_QUERY(${expression}) = '[]' THEN 1
@@ -749,14 +751,14 @@ export class FHIRPathToTSqlVisitor
         ELSE 0 
       END = 1)`;
     }
-    
+
     // No arguments - check current iteration context
     if (this.context.iterationContext) {
       // If the current iteration context is an EXISTS clause, negate it
       if (this.context.iterationContext.includes("EXISTS")) {
         return `(NOT ${this.context.iterationContext})`;
       }
-      
+
       if (this.context.iterationContext.includes("JSON_QUERY")) {
         return `(CASE 
           WHEN ${this.context.iterationContext} IS NULL THEN 1
@@ -920,6 +922,8 @@ export class FHIRPathToTSqlVisitor
     _args: string[],
   ): string {
     // Simplified implementation - return the value as-is
-    return this.context.iterationContext ?? `${this.context.resourceAlias}.json`;
+    return (
+      this.context.iterationContext ?? `${this.context.resourceAlias}.json`
+    );
   }
 }

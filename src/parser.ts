@@ -52,7 +52,7 @@ export class ViewDefinitionParser {
     // The SQL-on-FHIR spec requires status, but test cases may omit it
     if (!data.status) {
       // Default to 'active' if not specified
-      data.status = 'active';
+      data.status = "active";
     }
 
     // Validate select elements
@@ -149,27 +149,34 @@ export class ViewDefinitionParser {
   /**
    * Validate collection property constraints.
    */
-  private static validateCollectionConstraints(column: any, selectContext?: any): void {
+  private static validateCollectionConstraints(
+    column: any,
+    selectContext?: any,
+  ): void {
     if (column.collection === false) {
       // Check if the path could return multiple values
       const path = column.path;
-      
+
       // Known array fields in FHIR Patient that could return multiple values
       const multiValuedPaths = [
-        'name.family',
-        'name.given', 
-        'telecom.value',
-        'address.line',
-        'identifier.value',
-        'extension.value'
+        "name.family",
+        "name.given",
+        "telecom.value",
+        "address.line",
+        "identifier.value",
+        "extension.value",
       ];
-      
+
       // Check if this path could return multiple values without forEach context
-      const isInForEachContext = selectContext && (selectContext.forEach || selectContext.forEachOrNull);
-      
-      if (!isInForEachContext && multiValuedPaths.some(multiPath => path.includes(multiPath))) {
+      const isInForEachContext =
+        selectContext && (selectContext.forEach || selectContext.forEachOrNull);
+
+      if (
+        !isInForEachContext &&
+        multiValuedPaths.some((multiPath) => path.includes(multiPath))
+      ) {
         throw new Error(
-          `Path '${path}' can return multiple values. Use collection=true or place within a forEach context.`
+          `Path '${path}' can return multiple values. Use collection=true or place within a forEach context.`,
         );
       }
     }
@@ -201,7 +208,7 @@ export class ViewDefinitionParser {
       if (firstBranch.length !== currentBranch.length) {
         throw new Error(
           `unionAll branches must have the same columns. ` +
-          `Branch 1 has ${firstBranch.length} columns, but branch ${i + 1} has ${currentBranch.length} columns.`
+            `Branch 1 has ${firstBranch.length} columns, but branch ${i + 1} has ${currentBranch.length} columns.`,
         );
       }
 
@@ -210,8 +217,8 @@ export class ViewDefinitionParser {
         if (firstBranch[j].name !== currentBranch[j].name) {
           throw new Error(
             `unionAll branches must have the same columns in the same order. ` +
-            `Column at position ${j + 1}: branch 1 has "${firstBranch[j].name}", ` +
-            `but branch ${i + 1} has "${currentBranch[j].name}".`
+              `Column at position ${j + 1}: branch 1 has "${firstBranch[j].name}", ` +
+              `but branch ${i + 1} has "${currentBranch[j].name}".`,
           );
         }
       }
@@ -222,7 +229,9 @@ export class ViewDefinitionParser {
    * Extract column definitions from a select element.
    * Handles direct columns, forEach columns, and nested select columns.
    */
-  private static extractColumnsFromSelect(select: any): Array<{ name: string; type?: string }> {
+  private static extractColumnsFromSelect(
+    select: any,
+  ): Array<{ name: string; type?: string }> {
     const columns: Array<{ name: string; type?: string }> = [];
 
     // Direct columns
