@@ -28,14 +28,22 @@ function getSqlOnFhirInstance(): SqlOnFhir {
 }
 
 /**
- * Execute a ViewDefinition against the database and return the results.
+ * Result of executing a ViewDefinition with column metadata.
+ */
+export interface ViewDefinitionResult {
+  results: any[];
+  columns: string[];
+}
+
+/**
+ * Execute a ViewDefinition against the database and return the results with column metadata.
  *
  * @param viewDefinition - The ViewDefinition to transpile and execute
- * @returns Array of result objects
+ * @returns Object containing results array and column names in SQL order
  */
 export async function executeViewDefinition(
   viewDefinition: ViewDefinition | any,
-): Promise<any[]> {
+): Promise<ViewDefinitionResult> {
   try {
     // Get database connection
     const pool = getDatabasePool();
@@ -52,8 +60,15 @@ export async function executeViewDefinition(
     const request = new Request(pool);
     const queryResult = await request.query(sql);
 
-    // Parse JSON strings in results and return
-    return parseJsonStringsInResults(queryResult.recordset);
+    // Extract column names from the query result metadata
+    // This preserves the actual SQL column order
+    const columns = Object.keys(queryResult.columns || {});
+
+    // Parse JSON strings in results and return with column metadata
+    return {
+      results: parseJsonStringsInResults(queryResult.recordset),
+      columns,
+    };
   } catch (error) {
     throw new Error(
       `Failed to execute ViewDefinition: ${error instanceof Error ? error.message : String(error)}`,
@@ -67,20 +82,25 @@ export async function executeViewDefinition(
  * @param actualResults - The actual query results
  * @param expectedResults - The expected results from the test case
  * @param expectedColumns - Optional array of expected column names
+ * @param actualColumns - Optional array of actual column names from SQL metadata
  * @returns true if results match, false otherwise
  */
 export function compareResults(
   actualResults: any[],
   expectedResults: any[],
   expectedColumns?: string[],
+  actualColumns?: string[],
 ): boolean {
   // Check column ordering if specified
   if (expectedColumns && expectedColumns.length > 0) {
-    if (actualResults.length > 0) {
-      const actualColumns = Object.keys(actualResults[0]);
-      if (!arraysEqual(actualColumns, expectedColumns)) {
-        return false;
-      }
+    // Use actualColumns from SQL metadata if provided, otherwise fall back to Object.keys
+    const columnsToCheck =
+      actualColumns || (actualResults.length > 0 ? Object.keys(actualResults[0]) : []);
+    if (!arraysEqual(columnsToCheck, expectedColumns)) {
+      console.log("Column mismatch:");
+      console.log("  Expected:", expectedColumns);
+      console.log("  Actual:  ", columnsToCheck);
+      return false;
     }
   }
 

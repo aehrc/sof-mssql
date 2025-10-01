@@ -127,18 +127,19 @@ export class DynamicVitestGenerator {
     } else {
       it(testName, async () => {
         try {
-          const actualResults = await executeViewDefinition(testCase.view);
+          const result = await executeViewDefinition(testCase.view);
           const passed = compareResults(
-            actualResults,
+            result.results,
             testCase.expect || [],
             testCase.expectColumns,
+            result.columns,
           );
 
           suiteResults.push({ name: testName, result: { passed } });
 
           if (!passed) {
             expect.fail(
-              `Results don't match. Expected: ${JSON.stringify(testCase.expect)}, Actual: ${JSON.stringify(actualResults)}`,
+              `Results don't match. Expected: ${JSON.stringify(testCase.expect)}, Actual: ${JSON.stringify(result.results)}`,
             );
           }
 
