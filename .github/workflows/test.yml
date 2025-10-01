@@ -103,12 +103,12 @@ jobs:
       sqlserver:
         image: mcr.microsoft.com/mssql/server:${{ matrix.sql-version }}
         env:
-          SA_PASSWORD: TestPassword123!
+          SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
           ACCEPT_EULA: Y
         ports:
           - 1433:1433
         options: >-
-          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P TestPassword123! -Q 'SELECT 1'"
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P $SA_PASSWORD -Q 'SELECT 1'"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -139,7 +139,9 @@ jobs:
       run: npm run format:check
 
     - name: Create test database
-      run: sqlcmd -S localhost -U sa -P "TestPassword123!" -Q "CREATE DATABASE testdb"
+      run: sqlcmd -S localhost -U sa -P "${SA_PASSWORD}" -Q "CREATE DATABASE testdb"
+      env:
+        SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
 
     - name: Run tests
       run: npm test
@@ -148,4 +150,4 @@ jobs:
         MSSQL_HOST: localhost
         MSSQL_DATABASE: testdb
         MSSQL_USER: sa
-        MSSQL_PASSWORD: TestPassword123!
+        MSSQL_PASSWORD: ${{ secrets.SA_PASSWORD }}

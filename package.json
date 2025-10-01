@@ -33,6 +33,7 @@
   ],
   "license": "UNLICENSED",
   "dependencies": {
+    "antlr4ts": "^0.5.0-alpha.4",
     "fhirpath": "^3.15.1"
   },
   "devDependencies": {
