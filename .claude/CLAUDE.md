@@ -1,0 +1,1 @@
+Adhere to all guidelines in CONTRIBUTING.md.
