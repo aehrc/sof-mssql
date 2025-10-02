@@ -95,7 +95,8 @@ export function compareResults(
   if (expectedColumns && expectedColumns.length > 0) {
     // Use actualColumns from SQL metadata if provided, otherwise fall back to Object.keys
     const columnsToCheck =
-      actualColumns || (actualResults.length > 0 ? Object.keys(actualResults[0]) : []);
+      actualColumns ||
+      (actualResults.length > 0 ? Object.keys(actualResults[0]) : []);
     if (!arraysEqual(columnsToCheck, expectedColumns)) {
       console.log("Column mismatch:");
       console.log("  Expected:", expectedColumns);
