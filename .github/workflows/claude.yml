@@ -1,4 +1,4 @@
-name: Claude Code
+name: Claude - Respond to Message
 
 on:
   issue_comment:
@@ -23,7 +23,7 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-      actions: read # Required for Claude to read CI results on PRs
+      actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
