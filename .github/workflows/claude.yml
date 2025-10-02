@@ -38,4 +38,4 @@ jobs:
           assignee_trigger: "claude-bot"
           claude_args: |
             --model claude-sonnet-4-5
-            --allowedTools "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
+            --allowedTools "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*),Bash(npm run format)"
