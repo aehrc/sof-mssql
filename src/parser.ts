@@ -2,7 +2,7 @@
  * Parser for ViewDefinition JSON structures.
  */
 
-import { ViewDefinition, TestSuite } from "./types.js";
+import { TestSuite, ViewDefinition } from "./types.js";
 
 export class ViewDefinitionParser {
   /**
@@ -50,10 +50,8 @@ export class ViewDefinitionParser {
 
     // Status is optional for test cases, but recommended for production use
     // The SQL-on-FHIR spec requires status, but test cases may omit it
-    if (!data.status) {
-      // Default to 'active' if not specified
-      data.status = "active";
-    }
+    // Default to 'active' if not specified
+    data.status ??= "active";
 
     // Validate select elements
     this.validateSelectElements(data.select);
@@ -169,7 +167,7 @@ export class ViewDefinitionParser {
 
       // Check if this path could return multiple values without forEach context
       const isInForEachContext =
-        selectContext && (selectContext.forEach || selectContext.forEachOrNull);
+        selectContext && (selectContext.forEach ?? selectContext.forEachOrNull);
 
       if (
         !isInForEachContext &&

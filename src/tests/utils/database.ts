@@ -5,7 +5,7 @@
  * and test data lifecycle during Vitest test execution.
  */
 
-import { config as MSSQLConfig, ConnectionPool, Request } from "mssql";
+import { ConnectionPool, config as MSSQLConfig, Request } from "mssql";
 
 // Global connection pool
 let globalPool: ConnectionPool | null = null;
@@ -14,13 +14,13 @@ let isConnected = false;
 /**
  * Database configuration loaded from environment variables.
  */
-const getDatabaseConfig = () => {
+const getDatabaseConfig = (): MSSQLConfig | { connectionString: string } => {
   const config: MSSQLConfig = {
-    server: process.env.MSSQL_HOST || "localhost",
-    port: parseInt(process.env.MSSQL_PORT || "1433"),
-    database: process.env.MSSQL_DATABASE || "testdb",
-    user: process.env.MSSQL_USER || "sa",
-    password: process.env.MSSQL_PASSWORD || "",
+    server: process.env.MSSQL_HOST ?? "localhost",
+    port: parseInt(process.env.MSSQL_PORT ?? "1433"),
+    database: process.env.MSSQL_DATABASE ?? "testdb",
+    user: process.env.MSSQL_USER ?? "sa",
+    password: process.env.MSSQL_PASSWORD ?? "",
     options: {
       encrypt: process.env.MSSQL_ENCRYPT === "false" ? false : true,
       trustServerCertificate:
@@ -39,9 +39,14 @@ const getDatabaseConfig = () => {
 /**
  * Get table configuration from environment variables.
  */
-const getTableConfig = () => ({
-  tableName: process.env.MSSQL_TABLE || "fhir_resources",
-  schemaName: process.env.MSSQL_SCHEMA || "dbo",
+const getTableConfig = (): {
+  tableName: string;
+  schemaName: string;
+  resourceIdColumn: string;
+  resourceJsonColumn: string;
+} => ({
+  tableName: process.env.MSSQL_TABLE ?? "fhir_resources",
+  schemaName: process.env.MSSQL_SCHEMA ?? "dbo",
   resourceIdColumn: "id",
   resourceJsonColumn: "json",
 });
@@ -79,7 +84,7 @@ export async function cleanupDatabase(): Promise<void> {
   if (globalPool && isConnected) {
     try {
       await globalPool.close();
-    } catch (error) {
+    } catch {
       // Ignore cleanup errors
     } finally {
       globalPool = null;

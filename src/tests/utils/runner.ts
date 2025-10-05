@@ -240,7 +240,7 @@ export class TestRunner {
         );
         return; // Sysadmin can do everything
       }
-    } catch (error) {
+    } catch {
       // Continue with other checks if sysadmin check fails
       console.log(
         "Could not verify sysadmin status, continuing with permission checks",
@@ -258,7 +258,7 @@ export class TestRunner {
         console.log("User has CREATE TABLE permission");
         return; // Permission check passed
       }
-    } catch (error) {
+    } catch {
       console.log(
         "Permission function check failed, attempting practical test",
       );
@@ -364,7 +364,7 @@ export class TestRunner {
     }
 
     console.log(`\n--- Starting test suite: ${testSuite.title} ---`);
-    console.log(`Description: ${testSuite.description || "No description"}`);
+    console.log(`Description: ${testSuite.description ?? "No description"}`);
     console.log(`Tests to run: ${testSuite.tests.length}`);
     console.log(`Test resources: ${testSuite.resources.length}`);
 
@@ -620,7 +620,7 @@ export class TestRunner {
         const truncateSql = `TRUNCATE TABLE ${tableName}`;
         await truncateRequest.query(truncateSql);
         console.log(`✓ Cleaned up data from ${tableName} using TRUNCATE`);
-      } catch (truncateError) {
+      } catch {
         // Fall back to DELETE if TRUNCATE fails
         console.log(`TRUNCATE failed, falling back to DELETE`);
         const deleteRequest = new Request(this.pool);
@@ -755,7 +755,8 @@ export class TestRunner {
    */
   private deepEqual(a: any, b: any): boolean {
     if (a === b) return true;
-    if (a == null || b == null) return a === b;
+    if (a === null || a === undefined || b === null || b === undefined)
+      return a === b;
     if (typeof a !== typeof b) return false;
 
     if (Array.isArray(a)) {
@@ -778,8 +779,10 @@ export class TestRunner {
    */
   private isEqual(a: any, b: any): boolean {
     // Handle null/undefined comparison
-    if (a == null && b == null) return true;
-    if (a == null || b == null) return false;
+    if ((a === null || a === undefined) && (b === null || b === undefined))
+      return true;
+    if (a === null || a === undefined || b === null || b === undefined)
+      return false;
 
     // Handle boolean conversion
     if (typeof a === "boolean" && typeof b === "number") {

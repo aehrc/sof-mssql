@@ -6,13 +6,13 @@
  * and can be accessed after test completion for report generation.
  */
 
-import { writeFileSync, mkdirSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
 import { dirname } from "path";
 import type {
-  RunnerTestFile,
   RunnerTask,
-  RunnerTaskResultPack,
   RunnerTaskEventPack,
+  RunnerTaskResultPack,
+  RunnerTestFile,
 } from "vitest";
 import type { Reporter } from "vitest/reporters";
 import type { TestReport, TestReportEntry } from "./runner";

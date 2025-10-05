@@ -16,14 +16,12 @@ let sqlOnFhirInstance: SqlOnFhir | null = null;
  * Get or create the SqlOnFhir instance with database configuration.
  */
 function getSqlOnFhirInstance(): SqlOnFhir {
-  if (!sqlOnFhirInstance) {
-    sqlOnFhirInstance = new SqlOnFhir({
-      tableName: process.env.MSSQL_TABLE || "fhir_resources",
-      schemaName: process.env.MSSQL_SCHEMA || "dbo",
-      resourceIdColumn: "id",
-      resourceJsonColumn: "json",
-    });
-  }
+  sqlOnFhirInstance ??= new SqlOnFhir({
+    tableName: process.env.MSSQL_TABLE ?? "fhir_resources",
+    schemaName: process.env.MSSQL_SCHEMA ?? "dbo",
+    resourceIdColumn: "id",
+    resourceJsonColumn: "json",
+  });
   return sqlOnFhirInstance;
 }
 
@@ -98,7 +96,7 @@ export function compareResults(
   if (expectedColumns && expectedColumns.length > 0) {
     // Use actualColumns from SQL metadata if provided, otherwise fall back to Object.keys
     const columnsToCheck =
-      actualColumns ||
+      actualColumns ??
       (actualResults.length > 0 ? Object.keys(actualResults[0]) : []);
     if (!arraysEqual(columnsToCheck, expectedColumns)) {
       console.log("Column mismatch:");
@@ -151,8 +149,10 @@ export function compareResults(
 function deepEqual(a: any, b: any): boolean {
   if (a === b) return true;
 
-  if (a == null && b == null) return true;
-  if (a == null || b == null) return false;
+  if ((a === null || a === undefined) && (b === null || b === undefined))
+    return true;
+  if (a === null || a === undefined || b === null || b === undefined)
+    return false;
 
   if (typeof a !== typeof b) {
     // Handle boolean/number conversions for SQL Server BIT columns
@@ -284,23 +284,4 @@ function parseJsonStringsInResults(
 function looksLikeJson(value: string): boolean {
   const trimmed = value.trim();
   return trimmed.startsWith("[") || trimmed.startsWith("{");
-}
-
-/**
- * Handle special equality comparison cases for FHIR data.
- */
-function isEqual(a: any, b: any): boolean {
-  // Handle null/undefined comparison
-  if (a == null && b == null) return true;
-  if (a == null || b == null) return false;
-
-  // Handle boolean conversion
-  if (typeof a === "boolean" && typeof b === "number") {
-    return a === Boolean(b);
-  }
-  if (typeof b === "boolean" && typeof a === "number") {
-    return b === Boolean(a);
-  }
-
-  return a === b;
 }

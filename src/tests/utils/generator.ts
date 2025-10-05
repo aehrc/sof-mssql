@@ -82,7 +82,7 @@ export class DynamicVitestGenerator {
 
         // Store results for report generation
         if (typeof global !== "undefined") {
-          global.__TEST_RESULTS__ = global.__TEST_RESULTS__ || {};
+          global.__TEST_RESULTS__ = global.__TEST_RESULTS__ ?? {};
           global.__TEST_RESULTS__[suiteName] = { tests: suiteResults };
         }
       });
@@ -124,7 +124,7 @@ export class DynamicVitestGenerator {
           // If we get here, the test should have failed but didn't
           suiteResults.push({ name: testName, result: { passed: false } });
           expect.fail("Expected an error but the test passed");
-        } catch (error) {
+        } catch {
           // Test passed - we expected an error
           suiteResults.push({ name: testName, result: { passed: true } });
         }
@@ -161,7 +161,7 @@ export class DynamicVitestGenerator {
    * Get the collected test results for report generation.
    */
   getTestResults(): TestReport {
-    return global.__TEST_RESULTS__ || {};
+    return global.__TEST_RESULTS__ ?? {};
   }
 
   /**
