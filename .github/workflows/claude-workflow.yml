@@ -1,8 +1,8 @@
-name: Claude - Fix Failed Workflow
+name: Claude - Fix failed workflow
 
 on:
   workflow_run:
-    workflows: ["Build and test"]
+    workflows: [Build and test]
     types: [completed]
 
 jobs:
@@ -30,4 +30,7 @@ jobs:
           claude_args: |
             --model claude-sonnet-4-5
             --allowedTools "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*),Bash(npm run format)"
-          context: Please review any errors or failures in the latest "Build and Test" workflow run for the branch of the PR and make fixes necessary to satisfy the goals of the pull request. Workflow run: ${{ github.event.workflow_run.html_url }}
+          prompt: |
+            Please review any errors or failures in the latest "Build and Test" workflow run for the 
+            branch of the PR and make fixes necessary to satisfy the goals of the pull request. 
+            Workflow run: ${{ github.event.workflow_run.html_url }}
