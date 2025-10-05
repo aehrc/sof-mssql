@@ -120,15 +120,17 @@ export class QueryGenerator {
       const select = combination.selects[i];
       const unionChoice = combination.unionChoices[i];
 
-      // If this select has a unionAll choice, check the chosen branch
+      // Always check the parent select first (it may have forEach in nested selects)
+      if (this.selectHasForEach(select)) {
+        return true;
+      }
+
+      // If this select has a unionAll choice, also check the chosen branch
       if (unionChoice >= 0 && select.unionAll?.[unionChoice]) {
         const chosenBranch = select.unionAll[unionChoice];
         if (this.selectHasForEach(chosenBranch)) {
           return true;
         }
-      } else if (this.selectHasForEach(select)) {
-        // No unionAll choice, check the select itself
-        return true;
       }
     }
     return false;
@@ -315,14 +317,13 @@ export class QueryGenerator {
     for (const element of selects) {
       const select = element;
 
-      if (
-        combination &&
-        this.processUnionAllChoice(select, combination, topLevelForEach)
-      ) {
-        continue;
-      }
-
+      // Process the select itself (handles both forEach in select and nested selects)
       this.processSelectForEach(select, topLevelForEach);
+
+      // Also process unionAll choices if present
+      if (combination) {
+        this.processUnionAllChoice(select, combination, topLevelForEach);
+      }
     }
 
     return topLevelForEach;
@@ -330,13 +331,13 @@ export class QueryGenerator {
 
   /**
    * Process a select with a unionAll choice from a combination.
-   * Returns true if processing occurred, false otherwise.
+   * Adds forEach from the chosen unionAll branch to topLevelForEach.
    */
   private processUnionAllChoice(
     select: ViewDefinitionSelect,
     combination: SelectCombination,
     topLevelForEach: ViewDefinitionSelect[],
-  ): boolean {
+  ): void {
     const selectIndex = combination.selects.indexOf(select);
     const unionChoice =
       selectIndex >= 0 ? combination.unionChoices[selectIndex] : -1;
@@ -348,10 +349,7 @@ export class QueryGenerator {
       } else if (chosenBranch.select) {
         this.addForEachFromSelectArray(chosenBranch.select, topLevelForEach);
       }
-      return true;
     }
-
-    return false;
   }
 
   /**
@@ -1069,27 +1067,43 @@ export class QueryGenerator {
   ): string {
     const columnParts: string[] = [];
 
-    this.addNonForEachColumns(
-      combination,
-      columnParts,
-      context,
-      forEachContextMap,
-    );
+    // Process each select in order to maintain column ordering
+    for (let i = 0; i < combination.selects.length; i++) {
+      const select = combination.selects[i];
+      const unionChoice = combination.unionChoices[i];
 
-    // Get top-level forEach from the context map (includes unionAll forEach)
-    const topLevelForEachSelects = Array.from(forEachContextMap.keys()).filter(
-      (select) => {
-        const ctx = forEachContextMap.get(select);
-        // Top-level forEach have resource.json as their source
-        return ctx && ctx.forEachSource === context.resourceAlias + ".json";
-      },
-    );
-    this.addForEachColumns(
-      topLevelForEachSelects,
-      columnParts,
-      forEachContextMap,
-      combination,
-    );
+      // Add the select's own columns (if not forEach)
+      if (!(select.forEach || select.forEachOrNull) && select.column) {
+        this.addColumnsToList(select.column, columnParts, context);
+      }
+
+      // Add nested forEach columns
+      if (select.select) {
+        for (const nestedSelect of select.select) {
+          if (nestedSelect.forEach || nestedSelect.forEachOrNull) {
+            const forEachContext = forEachContextMap.get(nestedSelect);
+            if (forEachContext && nestedSelect.column) {
+              this.addColumnsToList(nestedSelect.column, columnParts, forEachContext);
+            }
+          } else if (nestedSelect.column) {
+            this.addColumnsToList(nestedSelect.column, columnParts, context);
+          }
+        }
+      }
+
+      // Add unionAll columns
+      if (unionChoice >= 0 && select.unionAll?.[unionChoice]) {
+        const chosenBranch = select.unionAll[unionChoice];
+        if (chosenBranch.column) {
+          const branchContext = (chosenBranch.forEach || chosenBranch.forEachOrNull)
+            ? forEachContextMap.get(chosenBranch)
+            : context;
+          if (branchContext) {
+            this.addColumnsToList(chosenBranch.column, columnParts, branchContext);
+          }
+        }
+      }
+    }
 
     return `SELECT\n  ${columnParts.join(",\n  ")}`;
   }
