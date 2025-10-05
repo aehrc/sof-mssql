@@ -1847,14 +1847,27 @@ export class QueryGenerator {
       "valueInteger64",
     ];
 
-    for (const key of primitiveKeys) {
-      const value = constant[key];
-      if (value !== undefined) {
-        return value as string | number | boolean;
-      }
+    // Count how many values are defined
+    const definedValues = primitiveKeys.filter(
+      (key) => constant[key] !== undefined,
+    );
+
+    // Validate that exactly one value is defined
+    if (definedValues.length === 0) {
+      throw new Error(
+        `Constant '${constant.name}' must have exactly one value[x] element defined`,
+      );
     }
 
-    return null;
+    if (definedValues.length > 1) {
+      throw new Error(
+        `Constant '${constant.name}' must have exactly one value[x] element defined, but has ${definedValues.length}`,
+      );
+    }
+
+    // Return the single defined value
+    const key = definedValues[0];
+    return constant[key] as string | number | boolean;
   }
 
   /**

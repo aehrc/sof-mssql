@@ -427,7 +427,10 @@ export class FHIRPathToTSqlVisitor
       return this.formatConstantValue(this.context.constants[constantName]);
     }
 
-    return "NULL";
+    // Constant not found - throw an error
+    throw new Error(
+      `Constant '%${constantName}' is not defined in the ViewDefinition`,
+    );
   }
 
   visitFunction(ctx: FunctionContext): string {
@@ -965,7 +968,10 @@ export class FHIRPathToTSqlVisitor
     const trimmedArg = arg.trim();
 
     // If already an EXISTS clause or boolean expression, return as-is
-    if (trimmedArg.startsWith("EXISTS") || this.isBooleanExpression(trimmedArg)) {
+    if (
+      trimmedArg.startsWith("EXISTS") ||
+      this.isBooleanExpression(trimmedArg)
+    ) {
       return arg;
     }
 
