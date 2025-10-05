@@ -129,6 +129,7 @@ module.exports = [
       "node_modules/**/*",
       "coverage/**/*",
       "src/generated/**/*", // Generated ANTLR grammar files
+      "sqlonfhir/**/*", // SQL on FHIR test data
       "*.d.ts",
       "*.config.js",
       "*.config.ts",
