@@ -1398,42 +1398,16 @@ export class QueryGenerator {
 
       // Handle collection property
       if (column.collection === true) {
-        // For collection=true, use JSON_QUERY to return arrays
         expression = this.generateCollectionExpression(column.path, context);
       } else if (column.collection === false) {
-        // For collection=false, validate and use JSON_VALUE
         expression = this.generateSingleValueExpression(column.path, context);
       } else {
-        // Default behaviour (collection not specified)
         expression = Transpiler.transpile(column.path, context);
       }
 
       // Handle type casting if specified
       if (column.type && column.collection !== true) {
-        const sqlType = Transpiler.inferSqlType(column.type);
-        if (sqlType !== "NVARCHAR(MAX)") {
-          // Special handling for boolean type - SQL Server doesn't support CAST(boolean_expression AS BIT)
-          if (sqlType === "BIT") {
-            // Check if expression is a simple JSON_VALUE that returns a string
-            // JSON_VALUE returns 'true'/'false' as strings, so we need to compare
-            // A simple JSON_VALUE has no comparison operators
-            const hasComparisonOperator =
-              expression.includes("=") ||
-              expression.includes("<") ||
-              expression.includes(">") ||
-              expression.includes("NOT") ||
-              expression.includes(" OR ") ||
-              expression.includes(" AND ");
-
-            if (expression.includes("JSON_VALUE") && !hasComparisonOperator) {
-              // Simple JSON_VALUE - compare to 'true'
-              return `CASE WHEN ${expression} = 'true' THEN 1 WHEN ${expression} = 'false' THEN 0 ELSE NULL END`;
-            }
-            // Otherwise it's a boolean expression already
-            return `CASE WHEN ${expression} THEN 1 WHEN NOT ${expression} THEN 0 ELSE NULL END`;
-          }
-          return `CAST(${expression} AS ${sqlType})`;
-        }
+        expression = this.applyTypeCasting(expression, column.type);
       }
 
       return expression;
@@ -1442,6 +1416,45 @@ export class QueryGenerator {
         `Failed to transpile column '${column.name}' with path '${column.path}': ${error}`,
       );
     }
+  }
+
+  /**
+   * Apply type casting to an expression.
+   */
+  private applyTypeCasting(expression: string, type: string): string {
+    const sqlType = Transpiler.inferSqlType(type);
+    if (sqlType === "NVARCHAR(MAX)") {
+      return expression;
+    }
+
+    // Special handling for boolean type
+    if (sqlType === "BIT") {
+      return this.generateBooleanCaseExpression(expression);
+    }
+
+    return `CAST(${expression} AS ${sqlType})`;
+  }
+
+  /**
+   * Generate a CASE expression for boolean conversion.
+   * Handles both simple JSON_VALUE fields and boolean expressions.
+   */
+  private generateBooleanCaseExpression(expression: string): string {
+    const hasComparisonOperator =
+      expression.includes("=") ||
+      expression.includes("<") ||
+      expression.includes(">") ||
+      expression.includes("NOT") ||
+      expression.includes(" OR ") ||
+      expression.includes(" AND ");
+
+    if (expression.includes("JSON_VALUE") && !hasComparisonOperator) {
+      // Simple JSON_VALUE - compare to 'true'/'false' strings
+      return `CASE WHEN ${expression} = 'true' THEN 1 WHEN ${expression} = 'false' THEN 0 ELSE NULL END`;
+    }
+
+    // Boolean expression - use as-is in CASE
+    return `CASE WHEN ${expression} THEN 1 WHEN NOT ${expression} THEN 0 ELSE NULL END`;
   }
 
   /**
