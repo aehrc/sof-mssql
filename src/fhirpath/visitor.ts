@@ -340,14 +340,14 @@ export class FHIRPathToTSqlVisitor
     // Regular JSON property access
     if (this.context.iterationContext) {
       return `JSON_VALUE(${this.context.iterationContext}, '$.${memberName}')`;
-    } else {
-      // Use JSON_QUERY for known array fields, JSON_VALUE for others
-      if (knownArrayFields.includes(memberName)) {
-        return `JSON_QUERY(${this.context.resourceAlias}.json, '$.${memberName}')`;
-      } else {
-        return `JSON_VALUE(${this.context.resourceAlias}.json, '$.${memberName}')`;
-      }
     }
+
+    // Use JSON_QUERY for known array fields, JSON_VALUE for others
+    if (knownArrayFields.includes(memberName)) {
+      return `JSON_QUERY(${this.context.resourceAlias}.json, '$.${memberName}')`;
+    }
+
+    return `JSON_VALUE(${this.context.resourceAlias}.json, '$.${memberName}')`;
   }
 
   visitFunctionInvocation(ctx: FunctionInvocationContext): string {
@@ -445,10 +445,9 @@ export class FHIRPathToTSqlVisitor
 
       // Transpile the filter expression with current context
       const filterVisitor = new FHIRPathToTSqlVisitor(this.context);
-      const condition = filterVisitor.visit(filterExprCtx);
 
       // Return the condition directly - this is for root-level where() calls
-      return condition;
+      return filterVisitor.visit(filterExprCtx);
     }
 
     const args = paramList ? this.getParameterList(paramList) : [];
