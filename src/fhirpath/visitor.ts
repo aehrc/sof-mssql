@@ -11,6 +11,7 @@ import {
   DateTimeLiteralContext,
   EntireExpressionContext,
   EqualityExpressionContext,
+  ExpressionContext,
   ExternalConstantContext,
   ExternalConstantTermContext,
   FunctionContext,
@@ -623,48 +624,75 @@ export class FHIRPathToTSqlVisitor
     const typeExprCtx = paramList.expression()[0];
     const typeName = typeExprCtx.text; // Get the raw text (e.g., "integer")
 
-    // Handle polymorphic field mapping for common FHIR types
-    // Example: value.ofType(integer) → valueInteger
+    return this.applyPolymorphicFieldMapping(base, typeName);
+  }
+
+  /**
+   * Maps polymorphic FHIR fields to their typed variants.
+   * Example: value.ofType(integer) → valueInteger
+   */
+  private applyPolymorphicFieldMapping(base: string, typeName: string): string {
     // Check if base is a JSON_VALUE call for a polymorphic field
     const match = /JSON_VALUE\(([^,]+),\s*'\$\.([^']+)'\)/.exec(base);
-    if (match) {
-      const source = match[1];
-      const path = match[2];
-
-      // Common FHIR polymorphic fields: value[x], onset[x], effective[x], etc.
-      // Map type name to proper suffix (integer → Integer, string → String, etc.)
-      const typeMap: Record<string, string> = {
-        integer: "Integer",
-        string: "String",
-        boolean: "Boolean",
-        decimal: "Decimal",
-        dateTime: "DateTime",
-        date: "Date",
-        time: "Time",
-        instant: "Instant",
-        uri: "Uri",
-        code: "Code",
-        Period: "Period",
-        Range: "Range",
-        Quantity: "Quantity",
-        CodeableConcept: "CodeableConcept",
-        Reference: "Reference",
-      };
-
-      const suffix = typeMap[typeName] || typeName;
-
-      // If the path ends with a common polymorphic field pattern, add the type suffix
-      if (path === "value" || path.endsWith(".value")) {
-        return `JSON_VALUE(${source}, '$.${path}${suffix}')`;
-      } else if (path === "onset" || path.endsWith(".onset")) {
-        return `JSON_VALUE(${source}, '$.${path}${suffix}')`;
-      } else if (path === "effective" || path.endsWith(".effective")) {
-        return `JSON_VALUE(${source}, '$.${path}${suffix}')`;
-      }
+    if (!match) {
+      return base; // Not a JSON_VALUE call, return unchanged
     }
 
-    // Default: return base unchanged
-    return base;
+    const source = match[1];
+    const path = match[2];
+    const suffix = this.getTypeSuffix(typeName);
+
+    // Check if this is a known polymorphic field pattern
+    if (this.isPolymorphicField(path)) {
+      return `JSON_VALUE(${source}, '$.${path}${suffix}')`;
+    }
+
+    return base; // Not a polymorphic field, return unchanged
+  }
+
+  /**
+   * Returns the type suffix for polymorphic field mapping.
+   */
+  private getTypeSuffix(typeName: string): string {
+    const typeMap: Record<string, string> = {
+      integer: "Integer",
+      string: "String",
+      boolean: "Boolean",
+      decimal: "Decimal",
+      dateTime: "DateTime",
+      date: "Date",
+      time: "Time",
+      instant: "Instant",
+      uri: "Uri",
+      code: "Code",
+      // Complex types use PascalCase as they match FHIR type names
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      Period: "Period",
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      Range: "Range",
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      Quantity: "Quantity",
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      CodeableConcept: "CodeableConcept",
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      Reference: "Reference",
+    };
+
+    return typeMap[typeName] || typeName;
+  }
+
+  /**
+   * Checks if a path represents a polymorphic field (value[x], onset[x], effective[x]).
+   */
+  private isPolymorphicField(path: string): boolean {
+    return (
+      path === "value" ||
+      path.endsWith(".value") ||
+      path === "onset" ||
+      path.endsWith(".onset") ||
+      path === "effective" ||
+      path.endsWith(".effective")
+    );
   }
 
   private handleWhereFunctionInvocation(
@@ -676,27 +704,42 @@ export class FHIRPathToTSqlVisitor
       throw new Error("where() function requires exactly one argument");
     }
 
-    // Get the raw filter expression context (not transpiled yet)
     const filterExprCtx = paramList.expression()[0];
 
     // Special case: where() called at resource root level (no collection)
-    // Example: where(value.ofType(integer) > 11).exists()
-    // In this case, we don't iterate over a collection, we just evaluate the condition
-    if (
+    if (this.isResourceRootLevel(base)) {
+      const filterVisitor = new FHIRPathToTSqlVisitor(this.context);
+      return filterVisitor.visit(filterExprCtx);
+    }
+
+    // Extract source and path from the base expression
+    const { source, jsonPath } = this.extractSourceAndPath(base);
+
+    // Build and return the EXISTS clause with filtered collection
+    return this.buildWhereExistsClause(source, jsonPath, filterExprCtx);
+  }
+
+  /**
+   * Checks if the base expression represents the resource root level (not a collection).
+   */
+  private isResourceRootLevel(base: string): boolean {
+    return (
       base === `${this.context.resourceAlias}.json` ||
       base === this.context.resourceAlias ||
       (!base.includes("JSON_QUERY") &&
         !base.includes("JSON_VALUE") &&
         !base.includes("EXISTS") &&
         !base.includes("SELECT"))
-    ) {
-      // Evaluate the filter condition directly on the resource
-      const filterVisitor = new FHIRPathToTSqlVisitor(this.context);
-      const condition = filterVisitor.visit(filterExprCtx);
-      return condition;
-    }
+    );
+  }
 
-    // Determine the source and path from the base
+  /**
+   * Extracts the source and JSON path from a base expression.
+   */
+  private extractSourceAndPath(base: string): {
+    source: string;
+    jsonPath: string;
+  } {
     let source = `${this.context.resourceAlias}.json`;
     let jsonPath = "$";
 
@@ -714,6 +757,17 @@ export class FHIRPathToTSqlVisitor
       }
     }
 
+    return { source, jsonPath };
+  }
+
+  /**
+   * Builds an EXISTS clause for filtering a collection with a where condition.
+   */
+  private buildWhereExistsClause(
+    source: string,
+    jsonPath: string,
+    filterExprCtx: ExpressionContext,
+  ): string {
     const tableAlias = "whereItem";
 
     // Create a new context for the filter condition where expressions refer to items in the collection
@@ -727,7 +781,6 @@ export class FHIRPathToTSqlVisitor
     const filterVisitor = new FHIRPathToTSqlVisitor(itemContext);
     const condition = filterVisitor.visit(filterExprCtx);
 
-    // Return EXISTS clause that filters the collection
     return `EXISTS (SELECT 1 FROM OPENJSON(${source}, '${jsonPath}') AS ${tableAlias} WHERE ${condition})`;
   }
 
@@ -880,66 +933,63 @@ export class FHIRPathToTSqlVisitor
   // Function handlers (simplified versions of the original implementations)
   private handleExistsFunction(args: string[]): string {
     if (args.length === 0) {
-      // No explicit args - check if we have an iteration context (from a base expression)
-      if (this.context.iterationContext) {
-        const iterCtx = this.context.iterationContext.trim();
-
-        // If the iteration context is already an EXISTS clause, return it as-is
-        if (iterCtx.startsWith("EXISTS")) {
-          return this.context.iterationContext;
-        }
-
-        // If it's a boolean expression, return it as-is
-        if (
-          iterCtx.includes(" = ") ||
-          iterCtx.includes(" != ") ||
-          iterCtx.includes(" < ") ||
-          iterCtx.includes(" > ") ||
-          iterCtx.includes(" <= ") ||
-          iterCtx.includes(" >= ") ||
-          iterCtx.includes(" AND ") ||
-          iterCtx.includes(" OR ") ||
-          iterCtx.startsWith("NOT ") ||
-          iterCtx.startsWith("(NOT ")
-        ) {
-          return this.context.iterationContext;
-        }
-
-        // Otherwise check if not null
-        return `(${this.context.iterationContext} IS NOT NULL)`;
-      }
-
-      // No iteration context either - check resource
-      return `(${this.context.resourceAlias}.json IS NOT NULL)`;
-    } else {
-      const arg = args[0];
-      const trimmedArg = arg.trim();
-
-      // If the argument is already an EXISTS clause, return it as-is
-      if (trimmedArg.startsWith("EXISTS")) {
-        return arg;
-      }
-
-      // If the argument is a boolean expression (contains comparison operators), return as-is
-      // Boolean expressions include: =, !=, <, >, <=, >=, AND, OR, NOT
-      if (
-        trimmedArg.includes(" = ") ||
-        trimmedArg.includes(" != ") ||
-        trimmedArg.includes(" < ") ||
-        trimmedArg.includes(" > ") ||
-        trimmedArg.includes(" <= ") ||
-        trimmedArg.includes(" >= ") ||
-        trimmedArg.includes(" AND ") ||
-        trimmedArg.includes(" OR ") ||
-        trimmedArg.startsWith("NOT ") ||
-        trimmedArg.startsWith("(NOT ")
-      ) {
-        return arg;
-      }
-
-      // Otherwise wrap in IS NOT NULL check
-      return `(${arg} IS NOT NULL)`;
+      return this.handleExistsWithoutArgs();
     }
+
+    return this.handleExistsWithArgs(args[0]);
+  }
+
+  /**
+   * Handles exists() function without arguments, using iteration context.
+   */
+  private handleExistsWithoutArgs(): string {
+    if (this.context.iterationContext) {
+      const iterCtx = this.context.iterationContext.trim();
+
+      // If already an EXISTS clause or boolean expression, return as-is
+      if (iterCtx.startsWith("EXISTS") || this.isBooleanExpression(iterCtx)) {
+        return this.context.iterationContext;
+      }
+
+      // Otherwise check if not null
+      return `(${this.context.iterationContext} IS NOT NULL)`;
+    }
+
+    // No iteration context - check resource
+    return `(${this.context.resourceAlias}.json IS NOT NULL)`;
+  }
+
+  /**
+   * Handles exists() function with an argument expression.
+   */
+  private handleExistsWithArgs(arg: string): string {
+    const trimmedArg = arg.trim();
+
+    // If already an EXISTS clause or boolean expression, return as-is
+    if (trimmedArg.startsWith("EXISTS") || this.isBooleanExpression(trimmedArg)) {
+      return arg;
+    }
+
+    // Otherwise wrap in IS NOT NULL check
+    return `(${arg} IS NOT NULL)`;
+  }
+
+  /**
+   * Checks if an expression is a boolean expression (contains comparison operators).
+   */
+  private isBooleanExpression(expr: string): boolean {
+    return (
+      expr.includes(" = ") ||
+      expr.includes(" != ") ||
+      expr.includes(" < ") ||
+      expr.includes(" > ") ||
+      expr.includes(" <= ") ||
+      expr.includes(" >= ") ||
+      expr.includes(" AND ") ||
+      expr.includes(" OR ") ||
+      expr.startsWith("NOT ") ||
+      expr.startsWith("(NOT ")
+    );
   }
 
   private handleEmptyFunction(args: string[]): string {
@@ -1060,63 +1110,10 @@ export class FHIRPathToTSqlVisitor
     return `${this.context.resourceAlias}.id`;
   }
 
-  private handleOfTypeFunction(args: string[]): string {
-    if (args.length !== 1) {
-      throw new Error("ofType() function requires exactly one argument");
-    }
-
-    const typeName = args[0];
-
-    // Handle polymorphic field mapping for common FHIR types
-    // Example: value.ofType(integer) → valueInteger
-    if (this.context.iterationContext) {
-      const ctx = this.context.iterationContext;
-
-      // Check if this is a JSON_VALUE call for a polymorphic field
-      const match = /JSON_VALUE\(([^,]+),\s*'\$\.([^']+)'\)/.exec(ctx);
-      if (match) {
-        const source = match[1];
-        const path = match[2];
-
-        // Common FHIR polymorphic fields: value[x], onset[x], effective[x], etc.
-        // Map type name to proper suffix (integer → Integer, string → String, etc.)
-        const typeMap: Record<string, string> = {
-          integer: "Integer",
-          string: "String",
-          boolean: "Boolean",
-          decimal: "Decimal",
-          dateTime: "DateTime",
-          date: "Date",
-          time: "Time",
-          instant: "Instant",
-          uri: "Uri",
-          code: "Code",
-          Period: "Period",
-          Range: "Range",
-          Quantity: "Quantity",
-          CodeableConcept: "CodeableConcept",
-          Reference: "Reference",
-        };
-
-        const suffix = typeMap[typeName] || typeName;
-
-        // If the path ends with a common polymorphic field pattern, add the type suffix
-        if (path === "value" || path.endsWith(".value")) {
-          const newPath = path + suffix;
-          return `JSON_VALUE(${source}, '$.${newPath}')`;
-        } else if (path === "onset" || path.endsWith(".onset")) {
-          const newPath = path + suffix;
-          return `JSON_VALUE(${source}, '$.${newPath}')`;
-        } else if (path === "effective" || path.endsWith(".effective")) {
-          const newPath = path + suffix;
-          return `JSON_VALUE(${source}, '$.${newPath}')`;
-        }
-      }
-    }
-
-    // Default: return current context unchanged
-    return (
-      this.context.iterationContext ?? `${this.context.resourceAlias}.json`
+  private handleOfTypeFunction(_args: string[]): string {
+    // This should not be called anymore since ofType() is handled specially in handleFunctionInvocation
+    throw new Error(
+      "ofType() function should be handled by handleOfTypeFunctionInvocation",
     );
   }
 
