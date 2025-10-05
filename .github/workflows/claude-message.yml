@@ -1,4 +1,4 @@
-name: Claude - Respond to Message
+name: Claude - Respond to message
 
 on:
   issue_comment:
