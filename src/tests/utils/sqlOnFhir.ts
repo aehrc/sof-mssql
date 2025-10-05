@@ -152,12 +152,13 @@ function deepEqual(a: any, b: any): boolean {
   if (a == null || b == null) return false;
 
   if (typeof a !== typeof b) {
-    // Handle boolean/number conversions
+    // Handle boolean/number conversions for SQL Server BIT columns
+    // SQL Server returns BIT as 0/1, but tests may expect true/false
     if (typeof a === "boolean" && typeof b === "number") {
-      return a === Boolean(b);
+      return (a ? 1 : 0) === b;
     }
     if (typeof b === "boolean" && typeof a === "number") {
-      return b === Boolean(a);
+      return (b ? 1 : 0) === a;
     }
     return false;
   }

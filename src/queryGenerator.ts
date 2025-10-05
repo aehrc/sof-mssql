@@ -441,6 +441,7 @@ export class QueryGenerator {
       forEachSelect,
       sourceExpression,
       applyAlias,
+      baseContext,
     );
     const forEachContext = this.createForEachContext(
       baseContext,
@@ -470,6 +471,7 @@ export class QueryGenerator {
     forEachSelect: ViewDefinitionSelect,
     sourceExpression: string,
     applyAlias: string,
+    context: TranspilerContext,
   ): string {
     const rawPath = forEachSelect.forEach ?? forEachSelect.forEachOrNull;
     const isOrNull = !!forEachSelect.forEachOrNull;
@@ -477,6 +479,7 @@ export class QueryGenerator {
 
     const { path: pathWithoutWhere, whereCondition } = this.parseFHIRPathWhere(
       rawPath ?? "",
+      context,
     );
     const { path: forEachPath, arrayIndex } =
       this.parseArrayIndexing(pathWithoutWhere);
@@ -533,10 +536,13 @@ export class QueryGenerator {
   }
 
   /**
-   * Parse FHIRPath .where() function from a path.
-   * Currently only supports .where(false) which filters out everything.
+   * Parse FHIRPath .where() function from a forEach path.
+   * Transpiles the where condition to SQL using the FHIRPath transpiler.
    */
-  private parseFHIRPathWhere(path: string): {
+  private parseFHIRPathWhere(
+    path: string,
+    context: TranspilerContext,
+  ): {
     path: string;
     whereCondition: string | null;
   } {
@@ -553,10 +559,26 @@ export class QueryGenerator {
         };
       }
 
-      // Other .where() conditions not yet supported
-      throw new Error(
-        `FHIRPath .where() function with condition "${condition}" is not yet supported`,
-      );
+      // Transpile the where condition using FHIRPath transpiler
+      // The condition will be evaluated in the context of items in the OPENJSON result
+      // We need to create a context where expressions refer to the 'value' column
+      try {
+        const itemContext: TranspilerContext = {
+          resourceAlias: "forEach_item",
+          constants: context.constants,
+          iterationContext: "value",
+        };
+
+        const sqlCondition = Transpiler.transpile(condition, itemContext);
+        return {
+          path: basePath,
+          whereCondition: sqlCondition,
+        };
+      } catch (error) {
+        throw new Error(
+          `Failed to transpile .where() condition "${condition}": ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
 
     return { path, whereCondition: null };
@@ -910,6 +932,7 @@ export class QueryGenerator {
 
     const { path: pathWithoutWhere, whereCondition } = this.parseFHIRPathWhere(
       rawPath ?? "",
+      forEachContext,
     );
     const { path: forEachPath, arrayIndex } =
       this.parseArrayIndexing(pathWithoutWhere);
@@ -1389,6 +1412,11 @@ export class QueryGenerator {
       if (column.type && column.collection !== true) {
         const sqlType = Transpiler.inferSqlType(column.type);
         if (sqlType !== "NVARCHAR(MAX)") {
+          // Special handling for boolean type - SQL Server doesn't support CAST(boolean_expression AS BIT)
+          if (sqlType === "BIT") {
+            // Use three-valued logic to preserve NULL: TRUE->1, FALSE->0, NULL->NULL
+            return `CASE WHEN ${expression} THEN 1 WHEN NOT ${expression} THEN 0 ELSE NULL END`;
+          }
           return `CAST(${expression} AS ${sqlType})`;
         }
       }

@@ -489,14 +489,21 @@ export class FHIRPathToTSqlVisitor
   ): string {
     const memberName = this.visit(memberCtx.identifier());
 
+    // Handle subquery results from .where() function
+    // Pattern: (SELECT TOP 1 value FROM OPENJSON(...) WHERE ...)
+    if (base.startsWith("(SELECT TOP 1 value FROM OPENJSON")) {
+      return `JSON_VALUE(${base}, '$.${memberName}')`;
+    }
+
+    // Handle JSON_VALUE expressions - check this BEFORE JSON_QUERY
+    // because the base might be JSON_VALUE(JSON_QUERY(...))
+    if (base.startsWith("JSON_VALUE")) {
+      return this.handleJsonValueMember(base, memberName);
+    }
+
     // Handle JSON_QUERY expressions (arrays)
     if (base.includes("JSON_QUERY")) {
       return this.handleJsonQueryMember(base, memberName);
-    }
-
-    // Handle JSON_VALUE expressions
-    if (base.includes("JSON_VALUE")) {
-      return this.handleJsonValueMember(base, memberName);
     }
 
     return `JSON_VALUE(${base}, '$.${memberName}')`;
@@ -515,13 +522,38 @@ export class FHIRPathToTSqlVisitor
   }
 
   private handleJsonValueMember(base: string, memberName: string): string {
-    const pathMatch = /JSON_VALUE\(([^,]+),\s*'([^']+)'\)/.exec(base);
+    // Match JSON_VALUE with potentially nested function calls in the first argument
+    // We need to find the last comma before the closing quote to split properly
+    const pathMatch = /^JSON_VALUE\((.*),\s*'([^']+)'\)$/.exec(base);
     if (!pathMatch) {
       return `JSON_VALUE(${base}, '$.${memberName}')`;
     }
 
     const source = pathMatch[1];
     const existingPath = pathMatch[2];
+
+    // Check if the source is a JSON_QUERY and path is array indexing (e.g., $[1])
+    // This happens with expressions like name[%constant_index].family
+    const queryMatch = /^JSON_QUERY\(([^,]+),\s*'([^']+)'\)$/.exec(source);
+    const isArrayIndexPath = /^\$\[\d+\]$/.test(existingPath);
+
+    if (queryMatch && isArrayIndexPath) {
+      // Convert JSON_VALUE(JSON_QUERY(r.json, '$.name'), '$[1]').family
+      // into JSON_VALUE(r.json, '$.name[1].family')
+      const innerSource = queryMatch[1];
+      const arrayPath = queryMatch[2];
+      const index = existingPath.match(/\[(\d+)\]/)?.[1] ?? "0";
+      const newPath = `${arrayPath}[${index}].${memberName}`;
+      return `JSON_VALUE(${innerSource}, '${newPath}')`;
+    }
+
+    // Check if the path already has an array index (e.g., $.name[1])
+    // If so, just append the member name directly
+    if (existingPath.includes("[") && existingPath.includes("]")) {
+      const newPath = `${existingPath}.${memberName}`;
+      return `JSON_VALUE(${source}, '${newPath}')`;
+    }
+
     const pathParts = existingPath.split(".");
 
     const shouldAddArrayIndex = this.shouldAddArrayIndexForField(
@@ -684,7 +716,7 @@ export class FHIRPathToTSqlVisitor
   }
 
   /**
-   * Checks if a path represents a polymorphic field (value[x], onset[x], effective[x]).
+   * Checks if a path represents a polymorphic field (value[x], onset[x], effective[x], deceased[x]).
    */
   private isPolymorphicField(path: string): boolean {
     return (
@@ -693,7 +725,9 @@ export class FHIRPathToTSqlVisitor
       path === "onset" ||
       path.endsWith(".onset") ||
       path === "effective" ||
-      path.endsWith(".effective")
+      path.endsWith(".effective") ||
+      path === "deceased" ||
+      path.endsWith(".deceased")
     );
   }
 
@@ -763,7 +797,8 @@ export class FHIRPathToTSqlVisitor
   }
 
   /**
-   * Builds an EXISTS clause for filtering a collection with a where condition.
+   * Builds a subquery for filtering a collection with a where condition.
+   * Returns a subquery that selects the filtered items, allowing further navigation.
    */
   private buildWhereExistsClause(
     source: string,
@@ -783,7 +818,9 @@ export class FHIRPathToTSqlVisitor
     const filterVisitor = new FHIRPathToTSqlVisitor(itemContext);
     const condition = filterVisitor.visit(filterExprCtx);
 
-    return `EXISTS (SELECT 1 FROM OPENJSON(${source}, '${jsonPath}') AS ${tableAlias} WHERE ${condition})`;
+    // Return a subquery that selects the filtered collection
+    // This allows further navigation (e.g., .family) to work correctly
+    return `(SELECT TOP 1 value FROM OPENJSON(${source}, '${jsonPath}') AS ${tableAlias} WHERE ${condition})`;
   }
 
   private handleFirstFunctionInvocation(base: string): string {
@@ -897,7 +934,8 @@ export class FHIRPathToTSqlVisitor
     } else if (typeof value === "number") {
       return value.toString();
     } else if (typeof value === "boolean") {
-      return value ? "1" : "0";
+      // Format as string to match JSON_VALUE output for boolean fields
+      return value ? "'true'" : "'false'";
     } else if (value === null || value === undefined) {
       return "NULL";
     } else {
@@ -948,8 +986,19 @@ export class FHIRPathToTSqlVisitor
     if (this.context.iterationContext) {
       const iterCtx = this.context.iterationContext.trim();
 
-      // If already an EXISTS clause or boolean expression, return as-is
-      if (iterCtx.startsWith("EXISTS") || this.isBooleanExpression(iterCtx)) {
+      // If already an EXISTS clause, return as-is
+      if (iterCtx.startsWith("EXISTS")) {
+        return this.context.iterationContext;
+      }
+
+      // If the iteration context is a SELECT subquery (from .where() function), wrap in EXISTS
+      // Check this BEFORE checking for boolean expression, because SELECT may contain operators
+      if (iterCtx.startsWith("(SELECT")) {
+        return `EXISTS ${this.context.iterationContext}`;
+      }
+
+      // If already a boolean expression, return as-is
+      if (this.isBooleanExpression(iterCtx)) {
         return this.context.iterationContext;
       }
 
@@ -967,11 +1016,19 @@ export class FHIRPathToTSqlVisitor
   private handleExistsWithArgs(arg: string): string {
     const trimmedArg = arg.trim();
 
-    // If already an EXISTS clause or boolean expression, return as-is
-    if (
-      trimmedArg.startsWith("EXISTS") ||
-      this.isBooleanExpression(trimmedArg)
-    ) {
+    // If already an EXISTS clause, return as-is
+    if (trimmedArg.startsWith("EXISTS")) {
+      return arg;
+    }
+
+    // If the argument is a SELECT subquery (from .where() function), wrap in EXISTS
+    // Check this BEFORE checking for boolean expression, because SELECT may contain operators
+    if (trimmedArg.startsWith("(SELECT")) {
+      return `EXISTS ${arg}`;
+    }
+
+    // If already a boolean expression, return as-is
+    if (this.isBooleanExpression(trimmedArg)) {
       return arg;
     }
 
