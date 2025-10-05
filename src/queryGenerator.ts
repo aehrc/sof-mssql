@@ -475,20 +475,11 @@ export class QueryGenerator {
     const isOrNull = !!forEachSelect.forEachOrNull;
     const applyType = isOrNull ? "OUTER APPLY" : "CROSS APPLY";
 
-    // Handle FHIRPath .where() function - strip it and handle specially
-    const { path: pathWithoutWhere, whereCondition } = this.parseFHIRPathWhere(
-      rawPath ?? "",
-    );
-
-    // Handle array indexing in forEach paths (e.g., telecom[0])
-    const { path: forEachPath, arrayIndex } =
-      this.parseArrayIndexing(pathWithoutWhere);
-
-    // Check if this path requires array flattening (e.g., contact.telecom)
+    const { path: pathWithoutWhere, whereCondition } = this.parseFHIRPathWhere(rawPath ?? "");
+    const { path: forEachPath, arrayIndex } = this.parseArrayIndexing(pathWithoutWhere);
     const arrayPaths = this.detectArrayFlatteningPaths(forEachPath);
 
     if (arrayPaths.length > 1) {
-      // Multiple arrays to traverse - generate nested CROSS APPLY
       return this.buildNestedForEachClause(
         arrayPaths,
         sourceExpression,
@@ -499,8 +490,27 @@ export class QueryGenerator {
       );
     }
 
-    // Simple single array path
-    // If array index is present, wrap in a subquery with WHERE to filter
+    return this.buildSimpleForEachClause(
+      applyType,
+      sourceExpression,
+      forEachPath,
+      applyAlias,
+      arrayIndex,
+      whereCondition,
+    );
+  }
+
+  /**
+   * Build a simple forEach clause for single array paths.
+   */
+  private buildSimpleForEachClause(
+    applyType: string,
+    sourceExpression: string,
+    forEachPath: string,
+    applyAlias: string,
+    arrayIndex: number | null,
+    whereCondition: string | null,
+  ): string {
     if (arrayIndex !== null || whereCondition !== null) {
       const whereClauses: string[] = [];
       if (arrayIndex !== null) {
@@ -1069,78 +1079,14 @@ export class QueryGenerator {
   ): string {
     const columnParts: string[] = [];
 
-    // Process each select in order to maintain column ordering
     for (let i = 0; i < combination.selects.length; i++) {
       const select = combination.selects[i];
       const unionChoice = combination.unionChoices[i];
 
-      // Check if this is a top-level forEach select
       if (select.forEach || select.forEachOrNull) {
-        const forEachContext = forEachContextMap.get(select);
-        if (forEachContext) {
-          // Add forEach select's own columns
-          if (select.column) {
-            this.addColumnsToList(select.column, columnParts, forEachContext);
-          }
-          // Add nested select columns
-          if (select.select) {
-            for (const nestedSelect of select.select) {
-              if (nestedSelect.forEach || nestedSelect.forEachOrNull) {
-                const nestedContext = forEachContextMap.get(nestedSelect);
-                if (nestedContext && nestedSelect.column) {
-                  this.addColumnsToList(nestedSelect.column, columnParts, nestedContext);
-                }
-              } else if (nestedSelect.column) {
-                this.addColumnsToList(nestedSelect.column, columnParts, forEachContext);
-              }
-            }
-          }
-          // Add unionAll columns
-          if (unionChoice >= 0 && select.unionAll?.[unionChoice]) {
-            const chosenBranch = select.unionAll[unionChoice];
-            if (chosenBranch.column) {
-              const branchContext = (chosenBranch.forEach || chosenBranch.forEachOrNull)
-                ? forEachContextMap.get(chosenBranch)
-                : forEachContext;
-              if (branchContext) {
-                this.addColumnsToList(chosenBranch.column, columnParts, branchContext);
-              }
-            }
-          }
-        }
+        this.addForEachSelectColumns(select, unionChoice, columnParts, forEachContextMap);
       } else {
-        // Non-forEach select
-        // Add the select's own columns
-        if (select.column) {
-          this.addColumnsToList(select.column, columnParts, context);
-        }
-
-        // Add nested forEach columns
-        if (select.select) {
-          for (const nestedSelect of select.select) {
-            if (nestedSelect.forEach || nestedSelect.forEachOrNull) {
-              const forEachContext = forEachContextMap.get(nestedSelect);
-              if (forEachContext && nestedSelect.column) {
-                this.addColumnsToList(nestedSelect.column, columnParts, forEachContext);
-              }
-            } else if (nestedSelect.column) {
-              this.addColumnsToList(nestedSelect.column, columnParts, context);
-            }
-          }
-        }
-
-        // Add unionAll columns
-        if (unionChoice >= 0 && select.unionAll?.[unionChoice]) {
-          const chosenBranch = select.unionAll[unionChoice];
-          if (chosenBranch.column) {
-            const branchContext = (chosenBranch.forEach || chosenBranch.forEachOrNull)
-              ? forEachContextMap.get(chosenBranch)
-              : context;
-            if (branchContext) {
-              this.addColumnsToList(chosenBranch.column, columnParts, branchContext);
-            }
-          }
-        }
+        this.addNonForEachSelectColumns(select, unionChoice, columnParts, context, forEachContextMap);
       }
     }
 
@@ -1148,144 +1094,123 @@ export class QueryGenerator {
   }
 
   /**
-   * Add non-forEach columns to the column parts.
+   * Add columns for a forEach select.
    */
-  private addNonForEachColumns(
-    combination: SelectCombination,
-    columnParts: string[],
-    context: TranspilerContext,
-    _forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
-  ): void {
-    for (let i = 0; i < combination.selects.length; i++) {
-      const select = combination.selects[i];
-      const unionChoice = combination.unionChoices[i];
-
-      const { hasForEachInSelect, hasForEachInUnion } =
-        this.checkForEachPresence(select, unionChoice);
-
-      this.addSelectColumns(select, hasForEachInSelect, columnParts, context);
-      this.addUnionColumns(
-        select,
-        unionChoice,
-        hasForEachInUnion,
-        columnParts,
-        context,
-      );
-    }
-  }
-
-  /**
-   * Check if a select or its unionAll branch has forEach.
-   */
-  private checkForEachPresence(
+  private addForEachSelectColumns(
     select: ViewDefinitionSelect,
     unionChoice: number,
-  ): { hasForEachInSelect: boolean; hasForEachInUnion: boolean } {
-    const hasForEachInSelect = !!(select.forEach ?? select.forEachOrNull);
-    let hasForEachInUnion = false;
-
-    if (unionChoice >= 0 && select.unionAll?.[unionChoice]) {
-      const chosenBranch = select.unionAll[unionChoice];
-      hasForEachInUnion = !!(
-        chosenBranch.forEach ?? chosenBranch.forEachOrNull
-      );
-    }
-
-    return { hasForEachInSelect, hasForEachInUnion };
-  }
-
-  /**
-   * Add columns from a select if it doesn't have forEach.
-   */
-  private addSelectColumns(
-    select: ViewDefinitionSelect,
-    hasForEach: boolean,
-    columnParts: string[],
-    context: TranspilerContext,
-  ): void {
-    if (!hasForEach && select.column) {
-      this.addColumnsToList(select.column, columnParts, context);
-    }
-  }
-
-  /**
-   * Add columns from a unionAll branch if it doesn't have forEach.
-   */
-  private addUnionColumns(
-    select: ViewDefinitionSelect,
-    unionChoice: number,
-    hasForEach: boolean,
-    columnParts: string[],
-    context: TranspilerContext,
-  ): void {
-    if (!hasForEach && unionChoice >= 0) {
-      this.addUnionAllColumns(select, unionChoice, columnParts, context);
-    }
-  }
-
-  /**
-   * Add top-level forEach columns to the column parts.
-   * Only processes forEach that are direct children of the combination, not nested forEach.
-   * Columns are added in reverse order to match the reversed CROSS APPLY order.
-   */
-  private addForEachColumns(
-    topLevelForEachSelects: ViewDefinitionSelect[],
     columnParts: string[],
     forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
-    combination: SelectCombination,
   ): void {
-    // Reverse the order to match the reversed CROSS APPLY clause order
-    const reversedForEach = [...topLevelForEachSelects].reverse();
-
-    // First pass: Add unionAll columns first (they come before parent columns)
-    for (const forEachSelect of reversedForEach) {
-      const forEachContext = forEachContextMap.get(forEachSelect);
-      if (!forEachContext) {
-        throw new Error("forEach context not found in map");
-      }
-
-      // Find the index of this forEach in the original combination.selects array
-      const originalIndex = combination.selects.indexOf(forEachSelect);
-      const unionChoice =
-        originalIndex >= 0 ? combination.unionChoices[originalIndex] : -1;
-
-      // Handle unionAll for forEach
-      if (unionChoice >= 0) {
-        this.addUnionAllColumns(
-          forEachSelect,
-          unionChoice,
-          columnParts,
-          forEachContext,
-          forEachContextMap,
-        );
-      }
+    const forEachContext = forEachContextMap.get(select);
+    if (!forEachContext) {
+      return;
     }
 
-    // Second pass: Add parent columns and nested select columns after unionAll
-    for (const forEachSelect of reversedForEach) {
-      const forEachContext = forEachContextMap.get(forEachSelect);
-      if (!forEachContext) {
-        throw new Error("forEach context not found in map");
-      }
+    if (select.column) {
+      this.addColumnsToList(select.column, columnParts, forEachContext);
+    }
 
-      if (forEachSelect.column) {
-        this.addColumnsToList(
-          forEachSelect.column,
-          columnParts,
-          forEachContext,
-        );
-      }
+    this.addNestedSelectColumnsForForEach(select, columnParts, forEachContext, forEachContextMap);
+    this.addUnionAllColumnsForSelect(select, unionChoice, columnParts, forEachContext, forEachContextMap);
+  }
 
-      if (forEachSelect.select) {
-        this.addNestedForEachColumns(
-          forEachSelect.select,
-          columnParts,
-          forEachContext,
-          forEachContextMap,
-        );
+  /**
+   * Add columns for a non-forEach select.
+   */
+  private addNonForEachSelectColumns(
+    select: ViewDefinitionSelect,
+    unionChoice: number,
+    columnParts: string[],
+    context: TranspilerContext,
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+  ): void {
+    if (select.column) {
+      this.addColumnsToList(select.column, columnParts, context);
+    }
+
+    this.addNestedSelectColumnsForNonForEach(select, columnParts, context, forEachContextMap);
+    this.addUnionAllColumnsForSelect(select, unionChoice, columnParts, context, forEachContextMap);
+  }
+
+  /**
+   * Add nested select columns for forEach select.
+   */
+  private addNestedSelectColumnsForForEach(
+    select: ViewDefinitionSelect,
+    columnParts: string[],
+    parentContext: TranspilerContext,
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+  ): void {
+    if (!select.select) {
+      return;
+    }
+
+    for (const nestedSelect of select.select) {
+      if (nestedSelect.forEach || nestedSelect.forEachOrNull) {
+        const nestedContext = forEachContextMap.get(nestedSelect);
+        if (nestedContext && nestedSelect.column) {
+          this.addColumnsToList(nestedSelect.column, columnParts, nestedContext);
+        }
+      } else if (nestedSelect.column) {
+        this.addColumnsToList(nestedSelect.column, columnParts, parentContext);
       }
     }
   }
+
+  /**
+   * Add nested select columns for non-forEach select.
+   */
+  private addNestedSelectColumnsForNonForEach(
+    select: ViewDefinitionSelect,
+    columnParts: string[],
+    context: TranspilerContext,
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+  ): void {
+    if (!select.select) {
+      return;
+    }
+
+    for (const nestedSelect of select.select) {
+      if (nestedSelect.forEach || nestedSelect.forEachOrNull) {
+        const forEachContext = forEachContextMap.get(nestedSelect);
+        if (forEachContext && nestedSelect.column) {
+          this.addColumnsToList(nestedSelect.column, columnParts, forEachContext);
+        }
+      } else if (nestedSelect.column) {
+        this.addColumnsToList(nestedSelect.column, columnParts, context);
+      }
+    }
+  }
+
+  /**
+   * Add unionAll columns for a select.
+   */
+  private addUnionAllColumnsForSelect(
+    select: ViewDefinitionSelect,
+    unionChoice: number,
+    columnParts: string[],
+    defaultContext: TranspilerContext,
+    forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
+  ): void {
+    if (unionChoice < 0 || !select.unionAll?.[unionChoice]) {
+      return;
+    }
+
+    const chosenBranch = select.unionAll[unionChoice];
+    if (!chosenBranch.column) {
+      return;
+    }
+
+    const branchContext = (chosenBranch.forEach || chosenBranch.forEachOrNull)
+      ? forEachContextMap.get(chosenBranch)
+      : defaultContext;
+
+    if (branchContext) {
+      this.addColumnsToList(chosenBranch.column, columnParts, branchContext);
+    }
+  }
+
 
   /**
    * Add nested forEach columns to the column parts.
