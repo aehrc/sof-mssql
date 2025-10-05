@@ -48,4 +48,5 @@ jobs:
           assignee_trigger: "claude-bot"
           claude_args: |
             --model claude-sonnet-4-5
-            --allowedTools "Bash(npm install),Bash(npm ci),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*),Bash(npm run format),Bash(npm run format:check),Bash(git diff:*),WebFetch(domain:sql-on-fhir.org),WebFetch(domain:learn.microsoft.com),mcp__github_ci__get_ci_status,mcp__github_ci__get_workflow_run_details,mcp__github_ci__download_job_log"
+            --mcp-config '{"mcpServers": {"github": {"type": "http", "url": "https://api.githubcopilot.com/mcp/", "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}}}}'
+            --allowedTools "Bash(npm install),Bash(npm ci),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*),Bash(npm run format),Bash(npm run format:check),Bash(git diff:*),WebFetch(domain:sql-on-fhir.org),WebFetch(domain:learn.microsoft.com),mcp__github_ci__get_ci_status,mcp__github_ci__get_workflow_run_details,mcp__github_ci__download_job_log,Edit,Write"
