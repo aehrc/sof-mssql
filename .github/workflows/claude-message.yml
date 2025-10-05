@@ -29,6 +29,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run Claude Code
         id: claude
@@ -38,4 +48,4 @@ jobs:
           assignee_trigger: "claude-bot"
           claude_args: |
             --model claude-sonnet-4-5
-            --allowedTools "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*),Bash(npm run format)"
+            --allowedTools "Bash(npm install),Bash(npm ci),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*),Bash(npm run format),Bash(npm run format:check),Bash(git diff:*),WebFetch(domain:sql-on-fhir.org),WebFetch(domain:learn.microsoft.com)"
