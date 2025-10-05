@@ -5,7 +5,7 @@ on:
     workflows: [Build and test]
     types: [completed]
     branches:
-      - 'claude/**'
+      - "claude/**"
 
 jobs:
   claude-autofix:
@@ -33,7 +33,7 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-        
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1

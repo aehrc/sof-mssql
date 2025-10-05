@@ -475,8 +475,11 @@ export class QueryGenerator {
     const isOrNull = !!forEachSelect.forEachOrNull;
     const applyType = isOrNull ? "OUTER APPLY" : "CROSS APPLY";
 
-    const { path: pathWithoutWhere, whereCondition } = this.parseFHIRPathWhere(rawPath ?? "");
-    const { path: forEachPath, arrayIndex } = this.parseArrayIndexing(pathWithoutWhere);
+    const { path: pathWithoutWhere, whereCondition } = this.parseFHIRPathWhere(
+      rawPath ?? "",
+    );
+    const { path: forEachPath, arrayIndex } =
+      this.parseArrayIndexing(pathWithoutWhere);
     const arrayPaths = this.detectArrayFlatteningPaths(forEachPath);
 
     if (arrayPaths.length > 1) {
@@ -1084,9 +1087,20 @@ export class QueryGenerator {
       const unionChoice = combination.unionChoices[i];
 
       if (select.forEach || select.forEachOrNull) {
-        this.addForEachSelectColumns(select, unionChoice, columnParts, forEachContextMap);
+        this.addForEachSelectColumns(
+          select,
+          unionChoice,
+          columnParts,
+          forEachContextMap,
+        );
       } else {
-        this.addNonForEachSelectColumns(select, unionChoice, columnParts, context, forEachContextMap);
+        this.addNonForEachSelectColumns(
+          select,
+          unionChoice,
+          columnParts,
+          context,
+          forEachContextMap,
+        );
       }
     }
 
@@ -1111,8 +1125,19 @@ export class QueryGenerator {
       this.addColumnsToList(select.column, columnParts, forEachContext);
     }
 
-    this.addNestedSelectColumnsForForEach(select, columnParts, forEachContext, forEachContextMap);
-    this.addUnionAllColumnsForSelect(select, unionChoice, columnParts, forEachContext, forEachContextMap);
+    this.addNestedSelectColumnsForForEach(
+      select,
+      columnParts,
+      forEachContext,
+      forEachContextMap,
+    );
+    this.addUnionAllColumnsForSelect(
+      select,
+      unionChoice,
+      columnParts,
+      forEachContext,
+      forEachContextMap,
+    );
   }
 
   /**
@@ -1129,8 +1154,19 @@ export class QueryGenerator {
       this.addColumnsToList(select.column, columnParts, context);
     }
 
-    this.addNestedSelectColumnsForNonForEach(select, columnParts, context, forEachContextMap);
-    this.addUnionAllColumnsForSelect(select, unionChoice, columnParts, context, forEachContextMap);
+    this.addNestedSelectColumnsForNonForEach(
+      select,
+      columnParts,
+      context,
+      forEachContextMap,
+    );
+    this.addUnionAllColumnsForSelect(
+      select,
+      unionChoice,
+      columnParts,
+      context,
+      forEachContextMap,
+    );
   }
 
   /**
@@ -1150,7 +1186,11 @@ export class QueryGenerator {
       if (nestedSelect.forEach || nestedSelect.forEachOrNull) {
         const nestedContext = forEachContextMap.get(nestedSelect);
         if (nestedContext && nestedSelect.column) {
-          this.addColumnsToList(nestedSelect.column, columnParts, nestedContext);
+          this.addColumnsToList(
+            nestedSelect.column,
+            columnParts,
+            nestedContext,
+          );
         }
       } else if (nestedSelect.column) {
         this.addColumnsToList(nestedSelect.column, columnParts, parentContext);
@@ -1175,7 +1215,11 @@ export class QueryGenerator {
       if (nestedSelect.forEach || nestedSelect.forEachOrNull) {
         const forEachContext = forEachContextMap.get(nestedSelect);
         if (forEachContext && nestedSelect.column) {
-          this.addColumnsToList(nestedSelect.column, columnParts, forEachContext);
+          this.addColumnsToList(
+            nestedSelect.column,
+            columnParts,
+            forEachContext,
+          );
         }
       } else if (nestedSelect.column) {
         this.addColumnsToList(nestedSelect.column, columnParts, context);
@@ -1202,15 +1246,15 @@ export class QueryGenerator {
       return;
     }
 
-    const branchContext = (chosenBranch.forEach || chosenBranch.forEachOrNull)
-      ? forEachContextMap.get(chosenBranch)
-      : defaultContext;
+    const branchContext =
+      chosenBranch.forEach || chosenBranch.forEachOrNull
+        ? forEachContextMap.get(chosenBranch)
+        : defaultContext;
 
     if (branchContext) {
       this.addColumnsToList(chosenBranch.column, columnParts, branchContext);
     }
   }
-
 
   /**
    * Add nested forEach columns to the column parts.
