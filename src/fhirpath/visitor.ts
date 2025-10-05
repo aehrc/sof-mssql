@@ -185,7 +185,10 @@ export class FHIRPathToTSqlVisitor
   visitInequalityExpression(ctx: InequalityExpressionContext): string {
     const left = this.visit(ctx.expression(0));
     const right = this.visit(ctx.expression(1));
-    const operator = this.getOperatorFromContext(ctx.text, left, right);
+
+    // Get the operator from the middle child (between the two expressions)
+    // The context has 3 children: expr0, operator, expr1
+    const operator = ctx.childCount >= 3 ? ctx.getChild(1).text : "";
 
     switch (operator) {
       case "<":
@@ -429,8 +432,25 @@ export class FHIRPathToTSqlVisitor
   visitFunction(ctx: FunctionContext): string {
     const functionName = this.visit(ctx.identifier());
     const paramList = ctx.paramList();
-    const args = paramList ? this.getParameterList(paramList) : [];
 
+    // Special handling for where() function - need raw expression, not transpiled
+    if (functionName === "where") {
+      if (!paramList || paramList.expression().length !== 1) {
+        throw new Error("where() function requires exactly one argument");
+      }
+
+      // Get the raw filter expression context (not transpiled yet)
+      const filterExprCtx = paramList.expression()[0];
+
+      // Transpile the filter expression with current context
+      const filterVisitor = new FHIRPathToTSqlVisitor(this.context);
+      const condition = filterVisitor.visit(filterExprCtx);
+
+      // Return the condition directly - this is for root-level where() calls
+      return condition;
+    }
+
+    const args = paramList ? this.getParameterList(paramList) : [];
     return this.executeFunctionHandler(functionName, args);
   }
 
@@ -566,17 +586,149 @@ export class FHIRPathToTSqlVisitor
   ): string {
     const functionName = this.visit(functionCtx.function().identifier());
     const paramList = functionCtx.function().paramList();
-    const args = paramList ? this.getParameterList(paramList) : [];
 
     // Special handling for first() function to match expected format
     if (functionName === "first") {
       return this.handleFirstFunctionInvocation(base);
     }
 
+    // Special handling for where() function - need raw expression, not transpiled
+    if (functionName === "where") {
+      return this.handleWhereFunctionInvocation(base, functionCtx);
+    }
+
+    // Special handling for ofType() function - need raw type name, not transpiled
+    if (functionName === "ofType") {
+      return this.handleOfTypeFunctionInvocation(base, functionCtx);
+    }
+
+    const args = paramList ? this.getParameterList(paramList) : [];
+
     // Create new context and delegate to function handler
     const newContext = this.createNewIterationContext(base);
     const visitor = new FHIRPathToTSqlVisitor(newContext);
     return visitor.executeFunctionHandler(functionName, args);
+  }
+
+  private handleOfTypeFunctionInvocation(
+    base: string,
+    functionCtx: FunctionInvocationContext,
+  ): string {
+    const paramList = functionCtx.function().paramList();
+    if (!paramList || paramList.expression().length !== 1) {
+      throw new Error("ofType() function requires exactly one argument");
+    }
+
+    // Get the raw type expression - it should be an identifier
+    const typeExprCtx = paramList.expression()[0];
+    const typeName = typeExprCtx.text; // Get the raw text (e.g., "integer")
+
+    // Handle polymorphic field mapping for common FHIR types
+    // Example: value.ofType(integer) → valueInteger
+    // Check if base is a JSON_VALUE call for a polymorphic field
+    const match = /JSON_VALUE\(([^,]+),\s*'\$\.([^']+)'\)/.exec(base);
+    if (match) {
+      const source = match[1];
+      const path = match[2];
+
+      // Common FHIR polymorphic fields: value[x], onset[x], effective[x], etc.
+      // Map type name to proper suffix (integer → Integer, string → String, etc.)
+      const typeMap: Record<string, string> = {
+        integer: "Integer",
+        string: "String",
+        boolean: "Boolean",
+        decimal: "Decimal",
+        dateTime: "DateTime",
+        date: "Date",
+        time: "Time",
+        instant: "Instant",
+        uri: "Uri",
+        code: "Code",
+        Period: "Period",
+        Range: "Range",
+        Quantity: "Quantity",
+        CodeableConcept: "CodeableConcept",
+        Reference: "Reference",
+      };
+
+      const suffix = typeMap[typeName] || typeName;
+
+      // If the path ends with a common polymorphic field pattern, add the type suffix
+      if (path === "value" || path.endsWith(".value")) {
+        return `JSON_VALUE(${source}, '$.${path}${suffix}')`;
+      } else if (path === "onset" || path.endsWith(".onset")) {
+        return `JSON_VALUE(${source}, '$.${path}${suffix}')`;
+      } else if (path === "effective" || path.endsWith(".effective")) {
+        return `JSON_VALUE(${source}, '$.${path}${suffix}')`;
+      }
+    }
+
+    // Default: return base unchanged
+    return base;
+  }
+
+  private handleWhereFunctionInvocation(
+    base: string,
+    functionCtx: FunctionInvocationContext,
+  ): string {
+    const paramList = functionCtx.function().paramList();
+    if (!paramList || paramList.expression().length !== 1) {
+      throw new Error("where() function requires exactly one argument");
+    }
+
+    // Get the raw filter expression context (not transpiled yet)
+    const filterExprCtx = paramList.expression()[0];
+
+    // Special case: where() called at resource root level (no collection)
+    // Example: where(value.ofType(integer) > 11).exists()
+    // In this case, we don't iterate over a collection, we just evaluate the condition
+    if (
+      base === `${this.context.resourceAlias}.json` ||
+      base === this.context.resourceAlias ||
+      (!base.includes("JSON_QUERY") &&
+        !base.includes("JSON_VALUE") &&
+        !base.includes("EXISTS") &&
+        !base.includes("SELECT"))
+    ) {
+      // Evaluate the filter condition directly on the resource
+      const filterVisitor = new FHIRPathToTSqlVisitor(this.context);
+      const condition = filterVisitor.visit(filterExprCtx);
+      return condition;
+    }
+
+    // Determine the source and path from the base
+    let source = `${this.context.resourceAlias}.json`;
+    let jsonPath = "$";
+
+    if (base.includes("JSON_QUERY")) {
+      const match = /JSON_QUERY\(([^,]+),\s*'([^']+)'\)/.exec(base);
+      if (match) {
+        source = match[1];
+        jsonPath = match[2];
+      }
+    } else if (base.includes("JSON_VALUE")) {
+      const match = /JSON_VALUE\(([^,]+),\s*'([^']+)'\)/.exec(base);
+      if (match) {
+        source = match[1];
+        jsonPath = match[2];
+      }
+    }
+
+    const tableAlias = "whereItem";
+
+    // Create a new context for the filter condition where expressions refer to items in the collection
+    const itemContext: TranspilerContext = {
+      resourceAlias: tableAlias,
+      constants: this.context.constants,
+      iterationContext: `${tableAlias}.value`,
+    };
+
+    // Transpile the filter expression with the item context
+    const filterVisitor = new FHIRPathToTSqlVisitor(itemContext);
+    const condition = filterVisitor.visit(filterExprCtx);
+
+    // Return EXISTS clause that filters the collection
+    return `EXISTS (SELECT 1 FROM OPENJSON(${source}, '${jsonPath}') AS ${tableAlias} WHERE ${condition})`;
   }
 
   private handleFirstFunctionInvocation(base: string): string {
@@ -728,9 +880,65 @@ export class FHIRPathToTSqlVisitor
   // Function handlers (simplified versions of the original implementations)
   private handleExistsFunction(args: string[]): string {
     if (args.length === 0) {
+      // No explicit args - check if we have an iteration context (from a base expression)
+      if (this.context.iterationContext) {
+        const iterCtx = this.context.iterationContext.trim();
+
+        // If the iteration context is already an EXISTS clause, return it as-is
+        if (iterCtx.startsWith("EXISTS")) {
+          return this.context.iterationContext;
+        }
+
+        // If it's a boolean expression, return it as-is
+        if (
+          iterCtx.includes(" = ") ||
+          iterCtx.includes(" != ") ||
+          iterCtx.includes(" < ") ||
+          iterCtx.includes(" > ") ||
+          iterCtx.includes(" <= ") ||
+          iterCtx.includes(" >= ") ||
+          iterCtx.includes(" AND ") ||
+          iterCtx.includes(" OR ") ||
+          iterCtx.startsWith("NOT ") ||
+          iterCtx.startsWith("(NOT ")
+        ) {
+          return this.context.iterationContext;
+        }
+
+        // Otherwise check if not null
+        return `(${this.context.iterationContext} IS NOT NULL)`;
+      }
+
+      // No iteration context either - check resource
       return `(${this.context.resourceAlias}.json IS NOT NULL)`;
     } else {
-      return `(${args[0]} IS NOT NULL)`;
+      const arg = args[0];
+      const trimmedArg = arg.trim();
+
+      // If the argument is already an EXISTS clause, return it as-is
+      if (trimmedArg.startsWith("EXISTS")) {
+        return arg;
+      }
+
+      // If the argument is a boolean expression (contains comparison operators), return as-is
+      // Boolean expressions include: =, !=, <, >, <=, >=, AND, OR, NOT
+      if (
+        trimmedArg.includes(" = ") ||
+        trimmedArg.includes(" != ") ||
+        trimmedArg.includes(" < ") ||
+        trimmedArg.includes(" > ") ||
+        trimmedArg.includes(" <= ") ||
+        trimmedArg.includes(" >= ") ||
+        trimmedArg.includes(" AND ") ||
+        trimmedArg.includes(" OR ") ||
+        trimmedArg.startsWith("NOT ") ||
+        trimmedArg.startsWith("(NOT ")
+      ) {
+        return arg;
+      }
+
+      // Otherwise wrap in IS NOT NULL check
+      return `(${arg} IS NOT NULL)`;
     }
   }
 
@@ -834,40 +1042,11 @@ export class FHIRPathToTSqlVisitor
             WHERE type IN (1, 2)), '')`;
   }
 
-  private handleWhereFunction(args: string[]): string {
-    if (args.length !== 1) {
-      throw new Error("where() function requires exactly one argument");
-    }
-
-    if (this.context.iterationContext) {
-      let jsonPath = "$.name";
-      let source = this.context.resourceAlias + ".json";
-
-      if (this.context.iterationContext.includes("JSON_VALUE")) {
-        const match = /JSON_VALUE\(([^,]+),\s*'([^']+)'\)/.exec(
-          this.context.iterationContext,
-        );
-        if (match) {
-          source = match[1];
-          jsonPath = match[2];
-        }
-      } else if (this.context.iterationContext.includes("JSON_QUERY")) {
-        const match = /JSON_QUERY\(([^,]+),\s*'([^']+)'\)/.exec(
-          this.context.iterationContext,
-        );
-        if (match) {
-          source = match[1];
-          jsonPath = match[2];
-        }
-      }
-
-      const tableAlias = "item";
-      const condition = args[0];
-
-      return `EXISTS (SELECT 1 FROM OPENJSON(${source}, '${jsonPath}') AS ${tableAlias} WHERE ${condition})`;
-    } else {
-      return args[0];
-    }
+  private handleWhereFunction(_args: string[]): string {
+    // This should not be called anymore since where() is handled specially in handleFunctionInvocation
+    throw new Error(
+      "where() function should be handled by handleWhereFunctionInvocation",
+    );
   }
 
   private handleSelectFunction(args: string[]): string {
@@ -885,7 +1064,57 @@ export class FHIRPathToTSqlVisitor
     if (args.length !== 1) {
       throw new Error("ofType() function requires exactly one argument");
     }
-    // Simplified implementation - return current context
+
+    const typeName = args[0];
+
+    // Handle polymorphic field mapping for common FHIR types
+    // Example: value.ofType(integer) → valueInteger
+    if (this.context.iterationContext) {
+      const ctx = this.context.iterationContext;
+
+      // Check if this is a JSON_VALUE call for a polymorphic field
+      const match = /JSON_VALUE\(([^,]+),\s*'\$\.([^']+)'\)/.exec(ctx);
+      if (match) {
+        const source = match[1];
+        const path = match[2];
+
+        // Common FHIR polymorphic fields: value[x], onset[x], effective[x], etc.
+        // Map type name to proper suffix (integer → Integer, string → String, etc.)
+        const typeMap: Record<string, string> = {
+          integer: "Integer",
+          string: "String",
+          boolean: "Boolean",
+          decimal: "Decimal",
+          dateTime: "DateTime",
+          date: "Date",
+          time: "Time",
+          instant: "Instant",
+          uri: "Uri",
+          code: "Code",
+          Period: "Period",
+          Range: "Range",
+          Quantity: "Quantity",
+          CodeableConcept: "CodeableConcept",
+          Reference: "Reference",
+        };
+
+        const suffix = typeMap[typeName] || typeName;
+
+        // If the path ends with a common polymorphic field pattern, add the type suffix
+        if (path === "value" || path.endsWith(".value")) {
+          const newPath = path + suffix;
+          return `JSON_VALUE(${source}, '$.${newPath}')`;
+        } else if (path === "onset" || path.endsWith(".onset")) {
+          const newPath = path + suffix;
+          return `JSON_VALUE(${source}, '$.${newPath}')`;
+        } else if (path === "effective" || path.endsWith(".effective")) {
+          const newPath = path + suffix;
+          return `JSON_VALUE(${source}, '$.${newPath}')`;
+        }
+      }
+    }
+
+    // Default: return current context unchanged
     return (
       this.context.iterationContext ?? `${this.context.resourceAlias}.json`
     );
