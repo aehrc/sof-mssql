@@ -1,15 +1,24 @@
 # Contributing
 
-Thank you for your interest in contributing to the SQL on FHIR view runner for MS SQL Server. This project implements the [SQL on FHIR ViewDefinition specification](https://sql-on-fhir.org/ig/StructureDefinition-ViewDefinition.html) to transform FHIR resources into tabular views for analytical queries, generating T-SQL compatible with Microsoft SQL Server.
+Thank you for your interest in contributing to the SQL on FHIR view runner for
+MS SQL Server. This project implements
+the [SQL on FHIR ViewDefinition specification](https://sql-on-fhir.org/ig/StructureDefinition-ViewDefinition.html)
+to transform FHIR resources into tabular views for analytical queries,
+generating T-SQL compatible with Microsoft SQL Server.
 
 ## Getting started
 
 Before contributing, please ensure you have:
 
-- Understanding of the [SQL on FHIR ViewDefinition specification](https://sql-on-fhir.org/ig/StructureDefinition-ViewDefinition.html)
-- Knowledge of [T-SQL syntax and features](https://learn.microsoft.com/en-us/sql/t-sql/language-reference?view=sql-server-ver17)
+- Understanding of
+  the [SQL on FHIR ViewDefinition specification](https://sql-on-fhir.org/ig/StructureDefinition-ViewDefinition.html)
+- Knowledge
+  of [T-SQL syntax and features](https://learn.microsoft.com/en-us/sql/t-sql/language-reference?view=sql-server-ver17)
 
-Review the specification carefully, as all contributions should align with its requirements for view definitions, column selection, and FHIRPath expression evaluation. Generated SQL must be valid T-SQL that executes correctly on MS SQL Server.
+Review the specification carefully, as all contributions should align with its
+requirements for view definitions, column selection, and FHIRPath expression
+evaluation. Generated SQL must be valid T-SQL that executes correctly on MS SQL
+Server.
 
 ## Code style guidelines
 
@@ -37,15 +46,18 @@ Write clear, maintainable TypeScript code by following these principles:
 - Use PascalCase for interfaces and types
 - Use UPPER_SNAKE_CASE for constants
 - Choose names that clearly describe purpose without being excessively verbose
-- Align naming with ViewDefinition terminology where applicable (e.g., `select`, `where`, `forEach`)
+- Align naming with ViewDefinition terminology where applicable (e.g., `select`,
+  `where`, `forEach`)
 
 **Code organization**
 
 - Prefer a simple functional style over object-oriented patterns
 - Favor pure functions that take inputs and return outputs without side effects
-- Use classes sparingly, only when they provide clear benefits for encapsulation or state management
+- Use classes sparingly, only when they provide clear benefits for encapsulation
+  or state management
 - Compose complex behavior from smaller, focused functions
-- Group related functionality into modules (e.g., ViewDefinition parsing, FHIRPath evaluation, T-SQL generation)
+- Group related functionality into modules (e.g., ViewDefinition parsing,
+  FHIRPath evaluation, T-SQL generation)
 - Place interfaces and types at the top of files
 - Order imports logically: external libraries first, then internal modules
 - Export only what needs to be public
@@ -53,7 +65,8 @@ Write clear, maintainable TypeScript code by following these principles:
 **Error handling**
 
 - Handle errors explicitly rather than silently failing
-- Provide meaningful error messages that reference ViewDefinition elements when possible
+- Provide meaningful error messages that reference ViewDefinition elements when
+  possible
 - Log errors appropriately for debugging
 
 **Asynchronous code**
@@ -68,29 +81,35 @@ When generating T-SQL code:
 
 - Generate valid T-SQL compatible with SQL Server 2017 and later
 - Use appropriate T-SQL functions for data type conversions and JSON operations
-- Follow T-SQL naming conventions for database objects (e.g., bracket identifiers when necessary)
+- Follow T-SQL naming conventions for database objects (e.g., bracket
+  identifiers when necessary)
 - Generate efficient queries that avoid unnecessary complexity
 
 ### Comments
 
-Use a generous amount of comments in a narrative style to make the code approachable and understandable:
+Use a generous amount of comments in a narrative style to make the code
+approachable and understandable:
 
 **Narrative style**
 
 - Write comments that tell the story of what the code is doing and why
 - Use a conversational tone that guides readers through the logic
 - Break down complex operations into explained steps
-- Help future maintainers understand the thought process behind implementation decisions
+- Help future maintainers understand the thought process behind implementation
+  decisions
 
 **When to comment**
 
 - Explain why decisions were made, not just what the code does
 - Document complex algorithms or business logic with step-by-step explanations
-- Note any workarounds for known issues, ViewDefinition specification limitations, or T-SQL constraints
+- Note any workarounds for known issues, ViewDefinition specification
+  limitations, or T-SQL constraints
 - Highlight potential performance considerations
 - Explain non-obvious FHIR resource transformations or FHIRPath evaluations
-- Reference specific sections of the ViewDefinition specification when implementing features
-- Document T-SQL-specific implementation choices (e.g., why a particular JSON function was used)
+- Reference specific sections of the ViewDefinition specification when
+  implementing features
+- Document T-SQL-specific implementation choices (e.g., why a particular JSON
+  function was used)
 - Add context about edge cases and how they are handled
 - Describe the purpose of code blocks, even when the code itself is clear
 
@@ -115,7 +134,8 @@ Use a generous amount of comments in a narrative style to make the code approach
 
 ## Commit messages
 
-Well-structured commit messages create a useful project history and make reviews easier.
+Well-structured commit messages create a useful project history and make reviews
+easier.
 
 **Format**
 
@@ -178,10 +198,74 @@ OPENJSON WITH clauses, improving query performance by 40% on
 large FHIR resource tables.
 ```
 
+## Testing
+
+The project uses [Vitest](https://vitest.dev/) for testing. Tests are defined in
+JSON files under `sqlonfhir/tests/` following
+the [SQL on FHIR test specification](https://github.com/FHIR/sql-on-fhir-v2/blob/master/tests/README.md).
+
+**Note**: The `sqlonfhir/` directory is a git submodule pointing to
+the [SQL on FHIR v2 repository](https://github.com/FHIR/sql-on-fhir-v2). Test
+definitions and ViewDefinition examples are maintained in that upstream
+repository.
+
+**Environment setup**
+
+Tests require the following environment variables to connect to a MS SQL Server
+database:
+
+- `MSSQL_HOST` - Database server hostname or IP address
+- `MSSQL_PORT` - Database server port (default: 1433)
+- `MSSQL_USER` - Database username
+- `MSSQL_PASSWORD` - Database password
+- `MSSQL_DATABASE` - Database name
+- `SQLONFHIR_TEST_PATH` - Path to test file or directory (e.g.,
+  `sqlonfhir/tests` or `sqlonfhir/tests/basic.json`)
+
+These can be set in a `.env` file in the project root (not checked into source
+control) or provided via the command line.
+
+**Running tests**
+
+```bash
+# Run all tests
+SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test
+
+# Run a specific test suite
+SQLONFHIR_TEST_PATH=sqlonfhir/tests/basic.json npm run test
+
+# Run tests in watch mode
+SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test:watch
+```
+
+**Filtering tests**
+
+Test names follow the pattern `(suite) test name #tag1 #tag2`, allowing precise
+filtering:
+
+```bash
+# Run all tests from the "basic" suite
+SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test -- -t "(basic)"
+
+# Run all tests from the "foreach" suite
+SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test -- -t "(foreach)"
+
+# Run specific test by name
+SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test -- -t "(basic) boolean attribute"
+
+# Run all tests with a specific tag
+SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test -- -t "#shareable"
+
+# Run all tests containing "attribute"
+SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test -- -t "attribute"
+```
+
 ## Pull requests
 
 - Run `npm run format` to format all code before committing
 - Run `npm run lint` and fix any errors or warnings before committing code
+- Ensure all tests pass by running
+  `SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test`
 - Create focused pull requests that address a single concern
 - Provide a clear description of changes and their purpose
 - Link to relevant issues and specification sections

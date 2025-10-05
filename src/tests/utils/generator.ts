@@ -97,7 +97,7 @@ export class DynamicVitestGenerator {
 
       // Generate individual test cases
       for (const testCase of testSuite.tests) {
-        this.generateTestCase(testCase, suiteResults);
+        this.generateTestCase(testCase, suiteResults, suiteName);
       }
     });
   }
@@ -108,8 +108,13 @@ export class DynamicVitestGenerator {
   private generateTestCase(
     testCase: TestCase,
     suiteResults: TestReportEntry[],
+    suiteName: string,
   ): void {
-    const testName = testCase.title;
+    // Build hierarchical test name with suite prefix and optional tags.
+    const tags = testCase.tags
+      ? ` ${testCase.tags.map((t) => `#${t}`).join(" ")}`
+      : "";
+    const testName = `(${suiteName}) ${testCase.title}${tags}`;
 
     if (testCase.expectError) {
       it(testName, async () => {
