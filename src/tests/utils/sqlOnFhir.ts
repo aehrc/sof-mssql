@@ -64,9 +64,12 @@ export async function executeViewDefinition(
     // This preserves the actual SQL column order
     const columns = Object.keys(queryResult.recordset.columns || {});
 
-    // Parse JSON strings in results and return with column metadata
+    // Extract boolean column names from ViewDefinition
+    const booleanColumns = extractBooleanColumns(viewDefinition);
+
+    // Parse JSON strings and convert boolean columns in results
     return {
-      results: parseJsonStringsInResults(queryResult.recordset),
+      results: parseJsonStringsInResults(queryResult.recordset, booleanColumns),
       columns,
     };
   } catch (error) {
@@ -192,15 +195,75 @@ function arraysEqual<T>(a: T[], b: T[]): boolean {
 }
 
 /**
+ * Extract boolean column names from ViewDefinition.
+ *
+ * @param viewDefinition - The ViewDefinition to extract from
+ * @returns Set of column names that are declared as boolean type
+ */
+function extractBooleanColumns(
+  viewDefinition: ViewDefinition | any,
+): Set<string> {
+  const booleanColumns = new Set<string>();
+
+  // Recursively extract columns from select definitions
+  function extractFromSelect(selectDef: any): void {
+    if (selectDef.column) {
+      for (const col of selectDef.column) {
+        if (col.type === "boolean") {
+          booleanColumns.add(col.name);
+        }
+      }
+    }
+
+    if (selectDef.select) {
+      for (const nestedSelect of selectDef.select) {
+        extractFromSelect(nestedSelect);
+      }
+    }
+
+    if (selectDef.forEach) {
+      for (const forEachDef of selectDef.forEach) {
+        extractFromSelect(forEachDef);
+      }
+    }
+
+    if (selectDef.unionAll) {
+      for (const unionDef of selectDef.unionAll) {
+        extractFromSelect(unionDef);
+      }
+    }
+  }
+
+  if (viewDefinition.select) {
+    for (const selectDef of viewDefinition.select) {
+      extractFromSelect(selectDef);
+    }
+  }
+
+  return booleanColumns;
+}
+
+/**
  * Parse JSON strings in query results into actual arrays/objects.
+ * Also converts numeric boolean values (0/1) to actual booleans for columns marked as boolean type.
  *
  * SQL Server may return some values as JSON strings that need to be parsed.
+ * SQL Server also returns CASE expressions as TINYINT (0/1) instead of boolean.
+ *
+ * @param results - The query results to parse
+ * @param booleanColumns - Set of column names that should be treated as booleans
  */
-function parseJsonStringsInResults(results: any[]): any[] {
+function parseJsonStringsInResults(
+  results: any[],
+  booleanColumns: Set<string>,
+): any[] {
   return results.map((row) => {
     const parsedRow: any = {};
     for (const [key, value] of Object.entries(row)) {
-      if (typeof value === "string" && looksLikeJson(value)) {
+      // Convert numeric boolean values to actual booleans
+      if (booleanColumns.has(key) && typeof value === "number") {
+        parsedRow[key] = Boolean(value);
+      } else if (typeof value === "string" && looksLikeJson(value)) {
         try {
           parsedRow[key] = JSON.parse(value);
         } catch {

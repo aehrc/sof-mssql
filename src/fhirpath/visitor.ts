@@ -335,6 +335,9 @@ export class FHIRPathToTSqlVisitor
       "identifier",
       "extension",
       "contact",
+      "output",
+      "item",
+      "udiCarrier",
     ];
 
     // Regular JSON property access
@@ -664,6 +667,7 @@ export class FHIRPathToTSqlVisitor
   /**
    * Maps polymorphic FHIR fields to their typed variants.
    * Example: value.ofType(integer) → valueInteger
+   * Handles paths with array indices like "output[0].value" → "output[0].valueUrl"
    */
   private applyPolymorphicFieldMapping(base: string, typeName: string): string {
     // Check if base is a JSON_VALUE call for a polymorphic field
@@ -678,7 +682,17 @@ export class FHIRPathToTSqlVisitor
 
     // Check if this is a known polymorphic field pattern
     if (this.isPolymorphicField(path)) {
-      return `JSON_VALUE(${source}, '$.${path}${suffix}')`;
+      // Extract the last segment and replace it with the typed variant
+      const lastDotIndex = path.lastIndexOf(".");
+      if (lastDotIndex === -1) {
+        // No dot, so the whole path is the polymorphic field
+        return `JSON_VALUE(${source}, '$.${path}${suffix}')`;
+      } else {
+        // Replace the last segment with its typed variant
+        const prefix = path.substring(0, lastDotIndex);
+        const lastSegment = path.substring(lastDotIndex + 1);
+        return `JSON_VALUE(${source}, '$.${prefix}.${lastSegment}${suffix}')`;
+      }
     }
 
     return base; // Not a polymorphic field, return unchanged
@@ -698,7 +712,17 @@ export class FHIRPathToTSqlVisitor
       time: "Time",
       instant: "Instant",
       uri: "Uri",
+      url: "Url",
+      canonical: "Canonical",
+      uuid: "Uuid",
+      oid: "Oid",
+      id: "Id",
       code: "Code",
+      markdown: "Markdown",
+      base64Binary: "Base64Binary",
+      positiveInt: "PositiveInt",
+      unsignedInt: "UnsignedInt",
+      integer64: "Integer64",
       // Complex types use PascalCase as they match FHIR type names
       // eslint-disable-next-line @typescript-eslint/naming-convention
       Period: "Period",
@@ -716,18 +740,22 @@ export class FHIRPathToTSqlVisitor
   }
 
   /**
-   * Checks if a path represents a polymorphic field (value[x], onset[x], effective[x], deceased[x]).
+   * Checks if a path represents a polymorphic field (value[x], onset[x], effective[x], deceased[x], identified[x]).
+   * Handles paths with array indices like "output[0].value" or "item[1].onset".
    */
   private isPolymorphicField(path: string): boolean {
+    // Extract the last segment after the last dot (or the whole path if no dot)
+    // This handles paths like "output[0].value" → "value" or "item[1].onset" → "onset"
+    const lastSegment = path.includes(".")
+      ? (path.split(".").pop() ?? "")
+      : path;
+
     return (
-      path === "value" ||
-      path.endsWith(".value") ||
-      path === "onset" ||
-      path.endsWith(".onset") ||
-      path === "effective" ||
-      path.endsWith(".effective") ||
-      path === "deceased" ||
-      path.endsWith(".deceased")
+      lastSegment === "value" ||
+      lastSegment === "onset" ||
+      lastSegment === "effective" ||
+      lastSegment === "deceased" ||
+      lastSegment === "identified"
     );
   }
 
