@@ -207,8 +207,11 @@ export class TestRunner {
    * List available schemas for troubleshooting.
    */
   private async listAvailableSchemas(): Promise<string> {
+    if (!this.pool) {
+      return "Unable to list schemas";
+    }
     try {
-      const request = new Request(this.pool!);
+      const request = new Request(this.pool);
       const result = await request.query(
         "SELECT name FROM sys.schemas ORDER BY name",
       );

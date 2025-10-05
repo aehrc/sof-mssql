@@ -30,7 +30,7 @@ import { compareResults, executeViewDefinition } from "./sqlOnFhir";
 
 // Global storage for test results
 declare global {
-  var __TEST_RESULTS__: TestReport | undefined;
+  var testResults: TestReport | undefined;
 }
 
 /**
@@ -66,10 +66,7 @@ export class DynamicVitestGenerator {
   /**
    * Generate a Vitest test suite for a SQL-on-FHIR test definition.
    */
-  private async generateTestSuite(
-    testSuite: TestSuite,
-    suiteName: string,
-  ): Promise<void> {
+  private generateTestSuite(testSuite: TestSuite, suiteName: string): void {
     const suiteResults: TestReportEntry[] = [];
 
     describe(suiteName, () => {
@@ -82,8 +79,8 @@ export class DynamicVitestGenerator {
 
         // Store results for report generation
         if (typeof global !== "undefined") {
-          global.__TEST_RESULTS__ = global.__TEST_RESULTS__ ?? {};
-          global.__TEST_RESULTS__[suiteName] = { tests: suiteResults };
+          global.testResults = global.testResults ?? {};
+          global.testResults[suiteName] = { tests: suiteResults };
         }
       });
 
@@ -161,7 +158,7 @@ export class DynamicVitestGenerator {
    * Get the collected test results for report generation.
    */
   getTestResults(): TestReport {
-    return global.__TEST_RESULTS__ ?? {};
+    return global.testResults ?? {};
   }
 
   /**

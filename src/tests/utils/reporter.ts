@@ -51,8 +51,8 @@ class SqlOnFhirReporter implements Reporter {
     if (!files) return;
 
     // Collect results from global storage set by dynamic tests
-    if (typeof global !== "undefined" && (global as any).__TEST_RESULTS__) {
-      this.testReport = (global as any).__TEST_RESULTS__;
+    if (typeof global !== "undefined" && (global as any).testResults) {
+      this.testReport = (global as any).testResults;
     }
 
     // Also collect from Vitest task results as fallback
@@ -144,7 +144,7 @@ class SqlOnFhirReporter implements Reporter {
   clearResults(): void {
     this.testReport = {};
     if (typeof global !== "undefined") {
-      (global as any).__TEST_RESULTS__ = {};
+      (global as any).testResults = {};
     }
   }
 
