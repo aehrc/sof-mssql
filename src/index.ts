@@ -40,12 +40,8 @@ export class SqlOnFhir {
    * Transpile a ViewDefinition to a T-SQL query.
    *
    * @param viewDefinition - The ViewDefinition to transpile
-   * @param testId - Optional test identifier for filtering test data
    */
-  transpile(
-    viewDefinition: ViewDefinitionInput,
-    testId?: string,
-  ): TranspilationResult {
+  transpile(viewDefinition: ViewDefinitionInput): TranspilationResult {
     let viewDef: ViewDefinition;
 
     if (
@@ -57,6 +53,6 @@ export class SqlOnFhir {
       viewDef = viewDefinition as ViewDefinition;
     }
 
-    return this.queryGenerator.generateQuery(viewDef, testId);
+    return this.queryGenerator.generateQuery(viewDef);
   }
 }

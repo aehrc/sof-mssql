@@ -6,23 +6,23 @@
  */
 
 import { Request } from "mssql";
-import { SqlOnFhir } from "../../index";
+import { QueryGenerator } from "../../queryGenerator";
 import { ViewDefinition } from "../../types";
 import { getDatabasePool } from "./database";
 
-let sqlOnFhirInstance: SqlOnFhir | null = null;
+let queryGeneratorInstance: QueryGenerator | null = null;
 
 /**
- * Get or create the SqlOnFhir instance with database configuration.
+ * Get or create the QueryGenerator instance with database configuration.
  */
-function getSqlOnFhirInstance(): SqlOnFhir {
-  sqlOnFhirInstance ??= new SqlOnFhir({
+function getQueryGeneratorInstance(): QueryGenerator {
+  queryGeneratorInstance ??= new QueryGenerator({
     tableName: process.env.MSSQL_TABLE ?? "fhir_resources",
     schemaName: process.env.MSSQL_SCHEMA ?? "dbo",
     resourceIdColumn: "id",
     resourceJsonColumn: "json",
   });
-  return sqlOnFhirInstance;
+  return queryGeneratorInstance;
 }
 
 /**
@@ -47,10 +47,13 @@ export async function executeViewDefinition(
   try {
     // Get database connection
     const pool = getDatabasePool();
-    const sqlOnFhir = getSqlOnFhirInstance();
+    const queryGenerator = getQueryGeneratorInstance();
 
-    // Transpile ViewDefinition to SQL with test_id filter
-    const transpilationResult = sqlOnFhir.transpile(viewDefinition, testId);
+    // Generate T-SQL query with test_id filter
+    const transpilationResult = queryGenerator.generateQuery(
+      viewDefinition,
+      testId,
+    );
     const sql = transpilationResult.sql;
 
     // Log the generated SQL for debugging
