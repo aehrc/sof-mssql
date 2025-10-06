@@ -495,10 +495,14 @@ export class FHIRPathToTSqlVisitor
   ): string {
     const memberName = this.visit(memberCtx.identifier());
 
-    // Handle subquery results from .where() function
+    // Handle subquery results from .where() or .extension() functions
     // Pattern: (SELECT TOP 1 value FROM OPENJSON(...) WHERE ...)
     if (base.startsWith("(SELECT TOP 1 value FROM OPENJSON")) {
-      return `JSON_VALUE(${base}, '$.${memberName}')`;
+      // Need to modify the SELECT to include JSON_VALUE on the value column
+      // Convert: (SELECT TOP 1 value FROM OPENJSON(...)...)
+      // To: (SELECT TOP 1 JSON_VALUE(value, '$.member') FROM OPENJSON(...)...)
+      const fromPart = base.substring(base.indexOf(" FROM "));
+      return `(SELECT TOP 1 JSON_VALUE(value, '$.${memberName}')${fromPart}`;
     }
 
     // Handle JSON_VALUE expressions - check this BEFORE JSON_QUERY
@@ -900,7 +904,9 @@ export class FHIRPathToTSqlVisitor
       // Simple identifier like 'name'
       return `JSON_VALUE(${this.context.resourceAlias}.json, '$.${base}[0]')`;
     } else {
-      return `JSON_VALUE(${base}, '$[0]')`;
+      // For complex expressions that aren't JSON_QUERY or JSON_VALUE,
+      // we can't easily add [0] indexing, so return as-is
+      return base;
     }
   }
 
@@ -1284,9 +1290,16 @@ export class FHIRPathToTSqlVisitor
     if (args.length !== 1) {
       throw new Error("extension() function requires exactly one argument");
     }
+
+    // extension('url') is equivalent to .extension.where(url = 'url')
+    // Returns the filtered extension object(s) as a JSON_QUERY result
+    const extensionUrl = args[0];
     const base =
       this.context.iterationContext ?? `${this.context.resourceAlias}.json`;
-    return `JSON_QUERY(${base}, '$.extension')`;
+
+    // Generate SQL that filters the extension array by URL
+    // Returns the first matching extension as a JSON value
+    return `(SELECT TOP 1 value FROM OPENJSON(${base}, '$.extension') WHERE JSON_VALUE(value, '$.url') = ${extensionUrl})`;
   }
 
   private handleBoundaryFunction(
