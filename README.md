@@ -4,7 +4,7 @@ A TypeScript library and CLI tool for
 transpiling [SQL on FHIR](https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/) view
 definitions into T-SQL queries optimised for Microsoft SQL Server.
 
-## Quick Start
+## Quick start
 
 The easiest way to use sof-mssql is via `npx`:
 
@@ -24,12 +24,12 @@ For programmatic use, install via npm:
 npm install sof-mssql
 ```
 
-## CLI Usage
+## CLI usage
 
 The CLI reads ViewDefinition JSON from stdin or a file, and outputs T-SQL to
 stdout or a file.
 
-### Basic Usage
+### Basic usage
 
 ```bash
 # Read from stdin, write to stdout
@@ -45,17 +45,17 @@ npx sof-mssql <viewdefinition.json --output query.sql
 npx sof-mssql --input viewdefinition.json --output query.sql
 
 # Fetch from remote server and transpile
-curl https://example.com/viewdefinition.json | npx sof-mssql
+curl https://example.com/fhir/ViewDefinition/1 | npx sof-mssql
 ```
 
-### CLI Options
+### CLI options
 
 - `-i, --input <file>` - Input ViewDefinition JSON file (default: stdin)
 - `-o, --output <file>` - Output SQL file (default: stdout)
 - `-V, --version` - Output the version number
 - `-h, --help` - Display help information
 
-## Programmatic Usage
+## Programmatic usage
 
 ```javascript
 import {SqlOnFhir} from 'sof-mssql';
@@ -132,7 +132,7 @@ console.log(result.columns);
   types
 - **WHERE Clauses** - Supports view-level filtering with FHIRPath expressions
 
-## SQL on FHIR Specification
+## SQL on FHIR specification
 
 This library implements
 the [SQL on FHIR v2 specification](https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/),
@@ -140,7 +140,7 @@ which defines a standard way to create relational views of FHIR data.
 ViewDefinitions describe how to extract and flatten FHIR resources into tabular
 structures suitable for SQL queries and analytics.
 
-## Database Setup
+## Database setup
 
 sof-mssql expects FHIR resources to be stored in a table with the following
 structure:
@@ -172,9 +172,9 @@ The generated queries use:
 - SQL Server's JSON functions (`JSON_VALUE`, `JSON_QUERY`, `OPENJSON`) for data
   extraction
 
-## Advanced Usage
+## Advanced usage
 
-### Custom Table Configuration
+### Custom table configuration
 
 ```javascript
 const sqlOnFhir = new SqlOnFhir({
@@ -185,7 +185,7 @@ const sqlOnFhir = new SqlOnFhir({
 });
 ```
 
-### Working with ViewDefinition Strings
+### Working with ViewDefinition strings
 
 ```javascript
 import {SqlOnFhir} from 'sof-mssql';
@@ -204,7 +204,7 @@ const fhirResource = {
 const result2 = sqlOnFhir.transpile(fhirResource);
 ```
 
-### Accessing the Query Generator
+### Accessing the query generator
 
 For advanced use cases, you can access the `QueryGenerator` directly:
 
