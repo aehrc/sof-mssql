@@ -14,12 +14,7 @@ let isConnected = false;
 /**
  * Database configuration loaded from environment variables.
  */
-const getDatabaseConfig = (): MSSQLConfig | string => {
-  // Use connection string if provided
-  if (process.env.MSSQL_CONNECTION_STRING) {
-    return process.env.MSSQL_CONNECTION_STRING;
-  }
-
+const getDatabaseConfig = (): MSSQLConfig => {
   return {
     server: process.env.MSSQL_HOST ?? "localhost",
     port: parseInt(process.env.MSSQL_PORT ?? "1433"),
@@ -64,10 +59,7 @@ export async function setupDatabase(): Promise<void> {
 
   const config = getDatabaseConfig();
   // ConnectionPool constructor accepts either a config object or a connection string
-  globalPool =
-    typeof config === "string"
-      ? new ConnectionPool(config)
-      : new ConnectionPool(config);
+  globalPool = new ConnectionPool(config);
 
   try {
     await globalPool.connect();
