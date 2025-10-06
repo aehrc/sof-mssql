@@ -7,4 +7,4 @@ out/
 .env.local
 .vscode/
 .idea/
-*.tsbuildinfo
+*.tsbuildinfohelm/
