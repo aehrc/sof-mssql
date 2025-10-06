@@ -907,6 +907,7 @@ export class FHIRPathToTSqlVisitor
   private createNewIterationContext(base: string): TranspilerContext {
     if (
       !base.includes("JSON_VALUE") &&
+      !base.includes("JSON_QUERY") &&
       !base.includes("EXISTS") &&
       !base.includes("SELECT")
     ) {
