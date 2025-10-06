@@ -135,7 +135,7 @@ console.log(result.columns);
 ## SQL on FHIR specification
 
 This library implements
-the [SQL on FHIR v2 specification](https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/),
+the [SQL on FHIR v2 specification](https://sql-on-fhir.org/ig/2.0.0/),
 which defines a standard way to create relational views of FHIR data.
 ViewDefinitions describe how to extract and flatten FHIR resources into tabular
 structures suitable for SQL queries and analytics.
