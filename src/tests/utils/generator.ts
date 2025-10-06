@@ -22,7 +22,9 @@ import { compareResults, executeViewDefinition } from "./sqlOnFhir";
 import { generateTestId } from "./testContext.js";
 
 // Global storage for test results
+// Note: Must use 'var' in ambient global declarations
 declare global {
+  // Used to store test results across test suite executions
   var testResults: TestReport | undefined;
 }
 
@@ -30,8 +32,6 @@ declare global {
  * Dynamic test generator that creates Vitest tests at runtime.
  */
 export class DynamicVitestGenerator {
-  private testResults: TestReport = {};
-
   /**
    * Load and generate tests for a single SQL-on-FHIR test file.
    */
@@ -108,8 +108,9 @@ export class DynamicVitestGenerator {
    * Build hierarchical test name with suite prefix and optional tags.
    */
   private buildTestName(suiteName: string, testCase: TestCase): string {
+    const formatTag = (tag: string): string => `#${tag}`;
     const tags = testCase.tags
-      ? ` ${testCase.tags.map((t) => `#${t}`).join(" ")}`
+      ? ` ${testCase.tags.map(formatTag).join(" ")}`
       : "";
     return `(${suiteName}) ${testCase.title}${tags}`;
   }
@@ -181,18 +182,11 @@ export class DynamicVitestGenerator {
   }
 
   /**
-   * Get the collected test results for report generation.
-   */
-  getTestResults(): TestReport {
-    return global.testResults ?? {};
-  }
-
-  /**
    * Clear test results.
    */
   clearTestResults(): void {
     if (typeof global !== "undefined") {
-      global.__TEST_RESULTS__ = {};
+      global.testResults = {};
     }
   }
 }
