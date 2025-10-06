@@ -15,7 +15,7 @@ import type {
   RunnerTestFile,
 } from "vitest";
 import type { Reporter } from "vitest/reporters";
-import type { TestReport, TestReportEntry } from "./runner";
+import type { TestReport, TestReportEntry } from "./types";
 
 export interface SqlOnFhirReporterOptions {
   /** Path to write the test report JSON file */

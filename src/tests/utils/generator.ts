@@ -17,7 +17,7 @@ import {
   setupDatabase,
   setupTestData,
 } from "./database.js";
-import type { TestReport, TestReportEntry } from "./runner";
+import type { TestReport, TestReportEntry } from "./types";
 import { compareResults, executeViewDefinition } from "./sqlOnFhir";
 import { generateTestId } from "./testContext.js";
 
