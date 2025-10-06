@@ -109,8 +109,12 @@ export async function setupTestData(
   const tableConfig = getTableConfig();
 
   // Insert test resources
-  for (const resource of resources) {
+  for (let i = 0; i < resources.length; i++) {
+    const resource = resources[i];
     try {
+      // Generate an ID if the resource doesn't have one (keep it short for NVARCHAR(64) column)
+      const resourceId = resource.id ?? `gen-${i}-${Date.now()}`;
+
       const insertSql = `
         INSERT INTO [${tableConfig.schemaName}].[${tableConfig.tableName}]
         ([test_id], [${tableConfig.resourceIdColumn}], [resource_type], [${tableConfig.resourceJsonColumn}])
@@ -119,14 +123,14 @@ export async function setupTestData(
 
       const insertRequest = new Request(globalPool);
       insertRequest.input("testId", testId);
-      insertRequest.input("id", resource.id);
+      insertRequest.input("id", resourceId);
       insertRequest.input("resource_type", resource.resourceType);
       insertRequest.input("json", JSON.stringify(resource));
 
       await insertRequest.query(insertSql);
     } catch (error) {
       throw new Error(
-        `Failed to insert resource ${resource.id}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to insert resource ${resource.id ?? `at index ${i}`}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

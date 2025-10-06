@@ -122,36 +122,56 @@ export class FHIRPathToTSqlVisitor
   visitMultiplicativeExpression(ctx: MultiplicativeExpressionContext): string {
     const left = this.visit(ctx.expression(0));
     const right = this.visit(ctx.expression(1));
-    const operator = this.getOperatorFromContext(ctx.text, left, right);
+
+    // Get the original expression texts from the parse tree to find the operator
+    const leftText = ctx.expression(0).text;
+    const rightText = ctx.expression(1).text;
+    const operator = this.getOperatorFromContext(ctx.text, leftText, rightText);
+
+    // Cast JSON_VALUE results to DECIMAL for numeric operations
+    const leftCasted = this.castForNumericOperation(left);
+    const rightCasted = this.castForNumericOperation(right);
 
     switch (operator) {
       case "*":
-        return `(${left} * ${right})`;
+        return `(${leftCasted} * ${rightCasted})`;
       case "/":
       case "div":
-        return `(${left} / ${right})`;
+        return `(${leftCasted} / ${rightCasted})`;
       case "mod":
-        return `(${left} % ${right})`;
+        return `(${leftCasted} % ${rightCasted})`;
       default:
-        return `(${left} * ${right})`;
+        return `(${leftCasted} * ${rightCasted})`;
     }
   }
 
   visitAdditiveExpression(ctx: AdditiveExpressionContext): string {
     const left = this.visit(ctx.expression(0));
     const right = this.visit(ctx.expression(1));
-    const operator = this.getOperatorFromContext(ctx.text, left, right);
+
+    // Get the original expression texts from the parse tree to find the operator
+    const leftText = ctx.expression(0).text;
+    const rightText = ctx.expression(1).text;
+    const operator = this.getOperatorFromContext(ctx.text, leftText, rightText);
 
     switch (operator) {
       case "+":
-        return `(${left} + ${right})`;
-      case "-":
-        return `(${left} - ${right})`;
+      case "-": {
+        // Cast JSON_VALUE results to DECIMAL for numeric operations
+        const leftCasted = this.castForNumericOperation(left);
+        const rightCasted = this.castForNumericOperation(right);
+        return operator === "+"
+          ? `(${leftCasted} + ${rightCasted})`
+          : `(${leftCasted} - ${rightCasted})`;
+      }
       case "&":
         // String concatenation in FHIRPath, use CONCAT in SQL Server
         return `CONCAT(${left}, ${right})`;
-      default:
-        return `(${left} + ${right})`;
+      default: {
+        const leftCasted = this.castForNumericOperation(left);
+        const rightCasted = this.castForNumericOperation(right);
+        return `(${leftCasted} + ${rightCasted})`;
+      }
     }
   }
 
@@ -630,6 +650,7 @@ export class FHIRPathToTSqlVisitor
       "identifier",
       "extension",
       "contact",
+      "link",
     ];
 
     // Determine if we should add [0] for this array field
@@ -683,6 +704,11 @@ export class FHIRPathToTSqlVisitor
       return this.handleOfTypeFunctionInvocation(base, functionCtx);
     }
 
+    // Special handling for getReferenceKey() function - need raw type name, not transpiled
+    if (functionName === "getReferenceKey") {
+      return this.handleGetReferenceKeyFunctionInvocation(base, functionCtx);
+    }
+
     const args = paramList ? this.getParameterList(paramList) : [];
 
     // Create new context and delegate to function handler
@@ -705,6 +731,26 @@ export class FHIRPathToTSqlVisitor
     const typeName = typeExprCtx.text; // Get the raw text (e.g., "integer")
 
     return this.applyPolymorphicFieldMapping(base, typeName);
+  }
+
+  private handleGetReferenceKeyFunctionInvocation(
+    base: string,
+    functionCtx: FunctionInvocationContext,
+  ): string {
+    const paramList = functionCtx.function().paramList();
+
+    // Get the optional resource type parameter
+    let resourceType: string | null = null;
+    if (paramList && paramList.expression().length > 0) {
+      // Get the raw type expression - it should be an identifier
+      const typeExprCtx = paramList.expression()[0];
+      resourceType = typeExprCtx.text; // Get the raw text (e.g., "Patient")
+    }
+
+    // Create new context and call the handler
+    const newContext = this.createNewIterationContext(base);
+    const visitor = new FHIRPathToTSqlVisitor(newContext);
+    return visitor.handleGetReferenceKeyFunctionWithType(resourceType);
   }
 
   /**
@@ -822,6 +868,19 @@ export class FHIRPathToTSqlVisitor
     );
   }
 
+  /**
+   * Cast expression to DECIMAL for numeric operations if needed.
+   * JSON_VALUE returns NVARCHAR by default, which can't be used in arithmetic operations.
+   */
+  private castForNumericOperation(expression: string): string {
+    // Check if expression contains JSON_VALUE and isn't already wrapped in CAST
+    if (expression.includes("JSON_VALUE") && !expression.includes("CAST(")) {
+      return `CAST(${expression} AS DECIMAL(18,6))`;
+    }
+    // Already has CAST or doesn't need it
+    return expression;
+  }
+
   private handleWhereFunctionInvocation(
     base: string,
     functionCtx: FunctionInvocationContext,
@@ -923,10 +982,30 @@ export class FHIRPathToTSqlVisitor
       return `JSON_VALUE(${source}, '${path}[0]')`;
     }
 
-    // Check if the base is a JSON_VALUE call - first() on a scalar should return the scalar as-is
+    // Check if the base is a JSON_VALUE call
     const simpleJsonMatch = /^JSON_VALUE\(([^,]+),\s*'([^']+)'\)$/.exec(base);
     if (simpleJsonMatch) {
-      // For JSON_VALUE calls, first() should return the value as-is since it's already a scalar
+      const source = simpleJsonMatch[1];
+      const path = simpleJsonMatch[2];
+
+      // Check if the path ends with an array field that needs [0] indexing
+      // For known array fields like "given", "family" etc, add [0]
+      const knownArrayFields = [
+        "given",
+        "line",
+        "coding",
+        "telecom",
+        "identifier",
+      ];
+      const pathSegments = path.split(".");
+      const lastSegment = pathSegments[pathSegments.length - 1];
+
+      if (knownArrayFields.includes(lastSegment)) {
+        // This is an array field, add [0] to get first element
+        return `JSON_VALUE(${source}, '${path}[0]')`;
+      }
+
+      // For non-array fields, first() should return the value as-is since it's already a scalar
       return base;
     } else if (
       !base.includes("JSON_VALUE") &&
@@ -1049,7 +1128,6 @@ export class FHIRPathToTSqlVisitor
       select: (args) => this.handleSelectFunction(args),
       getResourceKey: () => this.handleGetResourceKeyFunction(),
       ofType: (args) => this.handleOfTypeFunction(args),
-      getReferenceKey: (args) => this.handleGetReferenceKeyFunction(args),
       not: (args) => this.handleNotFunction(args),
       extension: (args) => this.handleExtensionFunction(args),
       lowBoundary: (args) => this.handleBoundaryFunction(functionName, args),
@@ -1292,7 +1370,8 @@ export class FHIRPathToTSqlVisitor
   }
 
   private handleGetResourceKeyFunction(): string {
-    return `${this.context.resourceAlias}.id`;
+    // Returns resourceType/id as the resource key
+    return `CONCAT(${this.context.resourceAlias}.resource_type, '/', ${this.context.resourceAlias}.id)`;
   }
 
   private handleOfTypeFunction(_args: string[]): string {
@@ -1302,11 +1381,46 @@ export class FHIRPathToTSqlVisitor
     );
   }
 
-  private handleGetReferenceKeyFunction(_args: string[]): string {
+  private handleGetReferenceKeyFunctionWithType(
+    resourceType: string | null,
+  ): string {
+    // Extract the .reference field from a Reference object
+    // Optional type parameter filters by resource type
+
     if (this.context.iterationContext) {
-      return `SUBSTRING(${this.context.iterationContext}, CHARINDEX('/', ${this.context.iterationContext}) + 1, LEN(${this.context.iterationContext}))`;
+      // If we're in an iteration context, the context points to the Reference object
+      // We need to extract the .reference field
+      const refSource = this.context.iterationContext;
+
+      let referenceExpr: string;
+
+      // Check if it's a JSON_VALUE call - extract just the reference field
+      if (refSource.includes("JSON_VALUE")) {
+        // Replace the current path with .reference
+        const match = /JSON_VALUE\(([^,]+),\s*'([^']+)'\)/.exec(refSource);
+        if (match) {
+          const source = match[1];
+          const path = match[2];
+          referenceExpr = `JSON_VALUE(${source}, '${path}.reference')`;
+        } else {
+          // Fallback
+          referenceExpr = `JSON_VALUE(${refSource}, '$.reference')`;
+        }
+      } else {
+        // For simple iteration context like "forEach_0.value"
+        referenceExpr = `JSON_VALUE(${refSource}, '$.reference')`;
+      }
+
+      // If a resource type is specified, only return the reference if it matches
+      if (resourceType) {
+        return `CASE WHEN LEFT(${referenceExpr}, ${resourceType.length + 1}) = '${resourceType}/' THEN ${referenceExpr} ELSE NULL END`;
+      }
+
+      return referenceExpr;
     }
-    return `${this.context.resourceAlias}.id`;
+
+    // No iteration context - shouldn't happen for getReferenceKey
+    throw new Error("getReferenceKey() requires a Reference object context");
   }
 
   private handleNotFunction(args: string[]): string {
