@@ -78,7 +78,6 @@ export class QueryGenerator {
       return {
         sql,
         columns,
-        parameters: {},
       };
     } catch (error) {
       throw new Error(`Failed to generate query for ViewDefinition: ${error}`);

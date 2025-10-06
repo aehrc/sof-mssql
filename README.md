@@ -1,6 +1,8 @@
 # sof-mssql
 
-A TypeScript library and CLI tool for transpiling [SQL on FHIR](https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/) ViewDefinitions into T-SQL queries optimised for Microsoft SQL Server.
+A TypeScript library and CLI tool for
+transpiling [SQL on FHIR](https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/) view
+definitions into T-SQL queries optimised for Microsoft SQL Server.
 
 ## Quick Start
 
@@ -8,7 +10,7 @@ The easiest way to use sof-mssql is via `npx`:
 
 ```bash
 # Transpile a ViewDefinition from stdin to stdout
-cat viewdefinition.json | npx sof-mssql > output.sql
+npx sof-mssql <viewdefinition.json >output.sql
 
 # Or use file arguments
 npx sof-mssql --input viewdefinition.json --output output.sql
@@ -24,7 +26,8 @@ npm install sof-mssql
 
 ## CLI Usage
 
-The CLI reads ViewDefinition JSON from stdin or a file, and outputs T-SQL to stdout or a file.
+The CLI reads ViewDefinition JSON from stdin or a file, and outputs T-SQL to
+stdout or a file.
 
 ### Basic Usage
 
@@ -52,7 +55,7 @@ npx sof-mssql --input viewdefinition.json --output query.sql
 ## Programmatic Usage
 
 ```javascript
-import { SqlOnFhir } from 'sof-mssql';
+import {SqlOnFhir} from 'sof-mssql';
 
 // Create an instance with optional configuration
 const sqlOnFhir = new SqlOnFhir({
@@ -113,36 +116,58 @@ console.log(result.columns);
 
 ## Features
 
-- **SQL on FHIR v2 Compliance** - Implements the SQL on FHIR specification for transforming FHIR resources into tabular views
-- **FHIRPath Support** - Full support for FHIRPath expressions in column definitions and filters
-- **T-SQL Optimisation** - Generates efficient T-SQL queries using `JSON_VALUE`, `JSON_QUERY`, and `OPENJSON`
-- **forEach Support** - Handles array flattening with `CROSS APPLY` for nested FHIR resources
+- **SQL on FHIR v2 Compliance** - Implements the SQL on FHIR specification for
+  transforming FHIR resources into tabular views
+- **FHIRPath Support** - Full support for FHIRPath expressions in column
+  definitions and filters
+- **T-SQL Optimisation** - Generates efficient T-SQL queries using `JSON_VALUE`,
+  `JSON_QUERY`, and `OPENJSON`
+- **forEach Support** - Handles array flattening with `CROSS APPLY` for nested
+  FHIR resources
 - **Union Support** - Supports `unionAll` for polymorphic fields
-- **Type Casting** - Automatic SQL type inference and casting based on FHIR data types
+- **Type Casting** - Automatic SQL type inference and casting based on FHIR data
+  types
 - **WHERE Clauses** - Supports view-level filtering with FHIRPath expressions
 
 ## SQL on FHIR Specification
 
-This library implements the [SQL on FHIR v2 specification](https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/), which defines a standard way to create relational views of FHIR data. ViewDefinitions describe how to extract and flatten FHIR resources into tabular structures suitable for SQL queries and analytics.
+This library implements
+the [SQL on FHIR v2 specification](https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/),
+which defines a standard way to create relational views of FHIR data.
+ViewDefinitions describe how to extract and flatten FHIR resources into tabular
+structures suitable for SQL queries and analytics.
 
 ## Database Setup
 
-sof-mssql expects FHIR resources to be stored in a table with the following structure:
+sof-mssql expects FHIR resources to be stored in a table with the following
+structure:
 
 ```sql
-CREATE TABLE [dbo].[fhir_resources] (
-    [id] NVARCHAR(64) NOT NULL PRIMARY KEY,
-    [resource_type] NVARCHAR(64) NOT NULL,
-    [json] NVARCHAR(MAX) NOT NULL,
-    -- Optional: test_id for test data isolation
-    [test_id] NVARCHAR(64) NULL
-);
+CREATE TABLE [dbo].[fhir_resources]
+(
+    [
+    id]
+    NVARCHAR
+(
+    64
+) NOT NULL PRIMARY KEY,
+    [resource_type] NVARCHAR
+(
+    64
+) NOT NULL,
+    [json] NVARCHAR
+(
+    MAX
+) NOT NULL,
+    );
 ```
 
 The generated queries use:
+
 - `resource_type` column for filtering by FHIR resource type
 - `json` column containing the complete FHIR resource as JSON
-- SQL Server's JSON functions (`JSON_VALUE`, `JSON_QUERY`, `OPENJSON`) for data extraction
+- SQL Server's JSON functions (`JSON_VALUE`, `JSON_QUERY`, `OPENJSON`) for data
+  extraction
 
 ## Advanced Usage
 
@@ -160,7 +185,7 @@ const sqlOnFhir = new SqlOnFhir({
 ### Working with ViewDefinition Strings
 
 ```javascript
-import { SqlOnFhir } from 'sof-mssql';
+import {SqlOnFhir} from 'sof-mssql';
 
 const sqlOnFhir = new SqlOnFhir();
 
@@ -181,7 +206,7 @@ const result2 = sqlOnFhir.transpile(fhirResource);
 For advanced use cases, you can access the `QueryGenerator` directly:
 
 ```javascript
-import { QueryGenerator } from 'sof-mssql';
+import {QueryGenerator} from 'sof-mssql';
 
 const generator = new QueryGenerator({
   tableName: 'fhir_resources',
@@ -192,15 +217,18 @@ const generator = new QueryGenerator({
 const result = generator.generateQuery(viewDefinition, 'test-123');
 
 // Generate CREATE VIEW statement
-const createViewSql = generator.generateCreateView(viewDefinition, 'patient_view');
+const createViewSql = generator.generateCreateView(viewDefinition,
+    'patient_view');
 
 // Generate CREATE TABLE statement for materialised views
-const createTableSql = generator.generateCreateTable(viewDefinition, 'patient_table');
+const createTableSql = generator.generateCreateTable(viewDefinition,
+    'patient_table');
 ```
 
 ## Examples
 
 See the [examples](examples/) directory for complete examples of:
+
 - Basic ViewDefinitions
 - forEach array flattening
 - Polymorphic field handling with unionAll
@@ -231,22 +259,10 @@ npm run format
 
 ## Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
+for details on our code of conduct and the process for submitting pull requests.
 
 ## License
 
-Copyright © 2025, Commonwealth Scientific and Industrial Research Organisation (CSIRO) ABN 41 687 119 230
-
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at:
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-
-## Authors
-
-- **John Grimes** - [Australian e-Health Research Centre, CSIRO](https://aehrc.csiro.au/)
-
-## Acknowledgements
-
-This project implements the [SQL on FHIR v2 specification](https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/) developed by the FHIR community.
+Copyright © 2025, Commonwealth Scientific and Industrial Research Organisation (
+CSIRO) ABN 41 687 119 230

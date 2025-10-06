@@ -19,11 +19,6 @@ export type FhirResource = Record<string, unknown>;
 export type TestExpectation = Record<string, unknown>;
 
 /**
- * SQL parameter value - can be string, number, boolean, or null.
- */
-export type SqlParameterValue = string | number | boolean | null;
-
-/**
  * Unvalidated ViewDefinition column from JSON input.
  * Fields are marked as unknown since validation will check types at runtime.
  */
@@ -288,7 +283,6 @@ export interface TestSuite {
  */
 export interface TranspilationResult {
   sql: string;
-  parameters?: { [key: string]: SqlParameterValue };
   columns: ColumnInfo[];
 }
 
