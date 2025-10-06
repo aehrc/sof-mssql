@@ -42,9 +42,9 @@ export class QueryGenerator {
   /**
    * Generate a T-SQL query from a ViewDefinition.
    */
-  generateQuery(viewDef: ViewDefinition): TranspilationResult {
+  generateQuery(viewDef: ViewDefinition, testId?: string): TranspilationResult {
     try {
-      const context = this.createBaseContext(viewDef);
+      const context = this.createBaseContext(viewDef, testId);
       const columns = this.collectAllColumns(viewDef.select);
 
       // Check if we need to generate multiple SELECT statements for UNION ALL
@@ -202,8 +202,13 @@ export class QueryGenerator {
 
     let statement = `${selectClause}\n${fromClause}`;
 
-    // Build WHERE clause combining resource type filter and view-level filters
+    // Build WHERE clause combining resource type filter, test_id filter, and view-level filters
     const whereConditions = [resourceTypeFilter];
+    if (context.testId) {
+      whereConditions.push(
+        `[${context.resourceAlias}].[test_id] = '${context.testId}'`,
+      );
+    }
     if (whereClause) {
       whereConditions.push(whereClause);
     }
@@ -414,6 +419,11 @@ export class QueryGenerator {
     let statement = `${selectClause}\n${fromClause}${applyClauses}`;
 
     const whereConditions = [resourceTypeFilter];
+    if (context.testId) {
+      whereConditions.push(
+        `[${context.resourceAlias}].[test_id] = '${context.testId}'`,
+      );
+    }
     if (whereClause) {
       whereConditions.push(whereClause);
     }
@@ -1371,7 +1381,10 @@ export class QueryGenerator {
   /**
    * Create the base transpiler context.
    */
-  private createBaseContext(viewDef: ViewDefinition): TranspilerContext {
+  private createBaseContext(
+    viewDef: ViewDefinition,
+    testId?: string,
+  ): TranspilerContext {
     const constants: { [key: string]: string | number | boolean | null } = {};
 
     if (viewDef.constant) {
@@ -1383,6 +1396,7 @@ export class QueryGenerator {
     return {
       resourceAlias: "r",
       constants,
+      testId,
     };
   }
 

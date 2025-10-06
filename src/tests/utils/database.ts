@@ -21,6 +21,11 @@ const getDatabaseConfig = (): MSSQLConfig | { connectionString: string } => {
     database: process.env.MSSQL_DATABASE ?? "testdb",
     user: process.env.MSSQL_USER ?? "sa",
     password: process.env.MSSQL_PASSWORD ?? "",
+    pool: {
+      max: 30, // Support concurrent test execution
+      min: 5,
+      idleTimeoutMillis: 30000,
+    },
     options: {
       encrypt: process.env.MSSQL_ENCRYPT === "false" ? false : true,
       trustServerCertificate:
@@ -96,8 +101,14 @@ export async function cleanupDatabase(): Promise<void> {
 /**
  * Setup test data by inserting FHIR resources into the table.
  * This should be called before each test case.
+ *
+ * @param resources - FHIR resources to insert
+ * @param testId - Unique test identifier for isolation
  */
-export async function setupTestData(resources: any[]): Promise<void> {
+export async function setupTestData(
+  resources: any[],
+  testId: string,
+): Promise<void> {
   if (!globalPool || !isConnected) {
     throw new Error("Database not connected. Call setupDatabase() first.");
   }
@@ -108,12 +119,13 @@ export async function setupTestData(resources: any[]): Promise<void> {
   for (const resource of resources) {
     try {
       const insertSql = `
-        INSERT INTO [${tableConfig.schemaName}].[${tableConfig.tableName}] 
-        ([${tableConfig.resourceIdColumn}], [resource_type], [${tableConfig.resourceJsonColumn}])
-        VALUES (@id, @resource_type, @json)
+        INSERT INTO [${tableConfig.schemaName}].[${tableConfig.tableName}]
+        ([test_id], [${tableConfig.resourceIdColumn}], [resource_type], [${tableConfig.resourceJsonColumn}])
+        VALUES (@testId, @id, @resource_type, @json)
       `;
 
       const insertRequest = new Request(globalPool);
+      insertRequest.input("testId", testId);
       insertRequest.input("id", resource.id);
       insertRequest.input("resource_type", resource.resourceType);
       insertRequest.input("json", JSON.stringify(resource));
@@ -128,10 +140,12 @@ export async function setupTestData(resources: any[]): Promise<void> {
 }
 
 /**
- * Cleanup test data by removing all resources from the table.
+ * Cleanup test data by removing resources for a specific test.
  * This should be called after each test case.
+ *
+ * @param testId - Unique test identifier to clean up
  */
-export async function cleanupTestData(): Promise<void> {
+export async function cleanupTestData(testId: string): Promise<void> {
   if (!globalPool || !isConnected) {
     return;
   }
@@ -142,9 +156,9 @@ export async function cleanupTestData(): Promise<void> {
   try {
     // Check if table exists first
     const checkTableSql = `
-      SELECT COUNT(*) as table_count 
-      FROM sys.tables t 
-      JOIN sys.schemas s ON t.schema_id = s.schema_id 
+      SELECT COUNT(*) as table_count
+      FROM sys.tables t
+      JOIN sys.schemas s ON t.schema_id = s.schema_id
       WHERE t.name = '${tableConfig.tableName}' AND s.name = '${tableConfig.schemaName}'
     `;
 
@@ -156,22 +170,10 @@ export async function cleanupTestData(): Promise<void> {
       return;
     }
 
-    // Use DELETE instead of TRUNCATE to avoid issues with foreign keys and ensure reliability
+    // Delete only data for this specific test
     const deleteRequest = new Request(globalPool);
-    await deleteRequest.query(`DELETE FROM ${tableName}`);
-
-    // Verify cleanup was successful
-    const verifyRequest = new Request(globalPool);
-    const verifyResult = await verifyRequest.query(
-      `SELECT COUNT(*) as remaining_count FROM ${tableName}`,
-    );
-    const remainingCount = verifyResult.recordset[0]?.remaining_count;
-
-    if (remainingCount > 0) {
-      throw new Error(
-        `Failed to clean up all test data. ${remainingCount} records remaining.`,
-      );
-    }
+    deleteRequest.input("testId", testId);
+    await deleteRequest.query(`DELETE FROM ${tableName} WHERE test_id = @testId`);
   } catch (error) {
     // Don't silently ignore cleanup failures - they cause subsequent test failures
     throw new Error(
@@ -208,13 +210,14 @@ async function createTableIfNotExists(): Promise<void> {
       return;
     }
 
-    // Create table with composite primary key
+    // Create table with composite primary key including test_id for parallel execution
     const createTableSql = `
       CREATE TABLE ${tableName} (
+        [test_id] NVARCHAR(128) NOT NULL,
         [${tableConfig.resourceIdColumn}] NVARCHAR(64) NOT NULL,
         [resource_type] NVARCHAR(64) NOT NULL,
         [${tableConfig.resourceJsonColumn}] NVARCHAR(MAX) NOT NULL,
-        PRIMARY KEY ([${tableConfig.resourceIdColumn}], [resource_type])
+        PRIMARY KEY ([test_id], [${tableConfig.resourceIdColumn}], [resource_type])
       )
     `;
 

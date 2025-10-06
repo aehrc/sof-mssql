@@ -8,15 +8,7 @@
 
 import { readdirSync, readFileSync, statSync } from "fs";
 import { join } from "path";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-} from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ViewDefinitionParser } from "../../parser";
 import { TestCase, TestSuite } from "../../types";
 import {
@@ -27,6 +19,7 @@ import {
 } from "./database.js";
 import type { TestReport, TestReportEntry } from "./runner";
 import { compareResults, executeViewDefinition } from "./sqlOnFhir";
+import { generateTestId } from "./testContext.js";
 
 // Global storage for test results
 declare global {
@@ -84,17 +77,11 @@ export class DynamicVitestGenerator {
         }
       });
 
-      beforeEach(async () => {
-        await setupTestData(testSuite.resources);
-      });
-
-      afterEach(async () => {
-        await cleanupTestData();
-      });
+      // Note: beforeEach/afterEach are handled per-test for parallel execution
 
       // Generate individual test cases
       for (const testCase of testSuite.tests) {
-        this.generateTestCase(testCase, suiteResults, suiteName);
+        this.generateTestCase(testCase, suiteResults, suiteName, testSuite);
       }
     });
   }
@@ -106,6 +93,7 @@ export class DynamicVitestGenerator {
     testCase: TestCase,
     suiteResults: TestReportEntry[],
     suiteName: string,
+    testSuite: TestSuite,
   ): void {
     // Build hierarchical test name with suite prefix and optional tags.
     const tags = testCase.tags
@@ -114,9 +102,11 @@ export class DynamicVitestGenerator {
     const testName = `(${suiteName}) ${testCase.title}${tags}`;
 
     if (testCase.expectError) {
-      it(testName, async () => {
+      it.concurrent(testName, async () => {
+        const testId = generateTestId();
         try {
-          await executeViewDefinition(testCase.view);
+          await setupTestData(testSuite.resources, testId);
+          await executeViewDefinition(testCase.view, testId);
 
           // If we get here, the test should have failed but didn't
           suiteResults.push({ name: testName, result: { passed: false } });
@@ -124,12 +114,16 @@ export class DynamicVitestGenerator {
         } catch {
           // Test passed - we expected an error
           suiteResults.push({ name: testName, result: { passed: true } });
+        } finally {
+          await cleanupTestData(testId);
         }
       });
     } else {
-      it(testName, async () => {
+      it.concurrent(testName, async () => {
+        const testId = generateTestId();
         try {
-          const result = await executeViewDefinition(testCase.view);
+          await setupTestData(testSuite.resources, testId);
+          const result = await executeViewDefinition(testCase.view, testId);
           const passed = compareResults(
             result.results,
             testCase.expect || [],
@@ -149,6 +143,8 @@ export class DynamicVitestGenerator {
         } catch (error) {
           suiteResults.push({ name: testName, result: { passed: false } });
           throw error;
+        } finally {
+          await cleanupTestData(testId);
         }
       });
     }

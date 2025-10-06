@@ -37,18 +37,20 @@ export interface ViewDefinitionResult {
  * Execute a ViewDefinition against the database and return the results with column metadata.
  *
  * @param viewDefinition - The ViewDefinition to transpile and execute
+ * @param testId - Unique test identifier for data isolation
  * @returns Object containing results array and column names in SQL order
  */
 export async function executeViewDefinition(
   viewDefinition: ViewDefinition | any,
+  testId: string,
 ): Promise<ViewDefinitionResult> {
   try {
     // Get database connection
     const pool = getDatabasePool();
     const sqlOnFhir = getSqlOnFhirInstance();
 
-    // Transpile ViewDefinition to SQL
-    const transpilationResult = sqlOnFhir.transpile(viewDefinition);
+    // Transpile ViewDefinition to SQL with test_id filter
+    const transpilationResult = sqlOnFhir.transpile(viewDefinition, testId);
     const sql = transpilationResult.sql;
 
     // Log the generated SQL for debugging

@@ -55,6 +55,7 @@ export interface TranspilerContext {
   currentForEachAlias?: string; // The OPENJSON table alias (e.g., "forEach_0")
   forEachSource?: string; // The JSON source being iterated (e.g., "r.json")
   forEachPath?: string; // The JSON path being iterated (e.g., "$.name")
+  testId?: string; // Optional test identifier for parallel test execution
 }
 
 export class FHIRPathToTSqlVisitor
