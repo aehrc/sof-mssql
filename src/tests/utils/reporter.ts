@@ -17,6 +17,8 @@ export interface SqlOnFhirReporterOptions {
   outputPath?: string;
   /** Whether to write the report file automatically after tests complete */
   autoWriteReport?: boolean;
+  /** Whether to print a summary of test results to console */
+  printSummary?: boolean;
 }
 
 /**
@@ -30,6 +32,7 @@ class SqlOnFhirReporter implements Reporter {
     this.options = {
       outputPath: "out/test-report.json",
       autoWriteReport: true,
+      printSummary: true,
       ...options,
     };
   }
@@ -53,10 +56,107 @@ class SqlOnFhirReporter implements Reporter {
     // Also collect from Vitest task results as fallback
     this.collectFromVitestTasks(files);
 
+    // Print summary if enabled
+    if (this.options.printSummary) {
+      this.printTestSummary(files);
+    }
+
     // Write report file if enabled
     if (this.options.autoWriteReport && this.options.outputPath) {
       this.writeReport(this.options.outputPath);
     }
+  }
+
+  /**
+   * Print a summary of test results to the console.
+   */
+  private printTestSummary(files: RunnerTestFile[]): void {
+    const stats = this.calculateTestStatistics(files);
+
+    if (stats.skipped > 0) {
+      console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      console.log("SQL on FHIR Test Summary");
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      console.log(`Passed:  ${stats.passed}`);
+      console.log(`Failed:  ${stats.failed}`);
+      console.log(`Skipped: ${stats.skipped}`);
+      console.log(`Total:   ${stats.total}`);
+
+      // Check for test name pattern filtering (used in CI)
+      if (process.argv.some((arg) => arg.includes("testNamePattern"))) {
+        console.log(
+          "\nNote: Tests tagged with #experimental were excluded from this run.",
+        );
+        console.log(
+          "These tests cover features outside the scope of this implementation.",
+        );
+      }
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    }
+  }
+
+  /**
+   * Calculate test statistics from Vitest task results.
+   */
+  private calculateTestStatistics(files: RunnerTestFile[]): {
+    passed: number;
+    failed: number;
+    skipped: number;
+    total: number;
+  } {
+    let passed = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    for (const file of files) {
+      if (!file.tasks) continue;
+
+      for (const task of file.tasks) {
+        const stats = this.countTestsInTask(task);
+        passed += stats.passed;
+        failed += stats.failed;
+        skipped += stats.skipped;
+      }
+    }
+
+    return {
+      passed,
+      failed,
+      skipped,
+      total: passed + failed + skipped,
+    };
+  }
+
+  /**
+   * Recursively count test results in a task.
+   */
+  private countTestsInTask(task: RunnerTask): {
+    passed: number;
+    failed: number;
+    skipped: number;
+  } {
+    let passed = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    if (task.type === "test") {
+      if (task.mode === "skip" || task.result?.state === "skip") {
+        skipped++;
+      } else if (task.result?.state === "pass") {
+        passed++;
+      } else if (task.result?.state === "fail") {
+        failed++;
+      }
+    } else if ("tasks" in task && task.tasks) {
+      for (const subtask of task.tasks) {
+        const stats = this.countTestsInTask(subtask);
+        passed += stats.passed;
+        failed += stats.failed;
+        skipped += stats.skipped;
+      }
+    }
+
+    return { passed, failed, skipped };
   }
 
   /**

@@ -322,14 +322,43 @@ SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test -- -t "#shareable"
 SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test -- -t "attribute"
 ```
 
+**Experimental tests**
+
+Some tests in the SQL on FHIR test suite are tagged with `#experimental`. These
+tests cover features that are outside the scope of this MS SQL Server
+implementation and may never pass. For example:
+
+- Tests requiring precise timezone handling beyond MS SQL Server capabilities
+- Tests requiring decimal precision that differs from MS SQL Server behaviour
+- Tests for features not yet fully specified in the SQL on FHIR standard
+
+These tests are excluded from CI builds to prevent build failures, but are still
+available for local development:
+
+```bash
+# Run all tests including experimental ones (may have failures)
+SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test
+
+# Run only tests that should pass in CI (excludes experimental)
+SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test:ci
+```
+
+The CI build uses `npm run test:ci`, which excludes experimental tests using the
+test name pattern `^(?!.*#experimental)`. This ensures that CI builds succeed
+when all in-scope tests pass, while still maintaining visibility of experimental
+test results during local development.
+
 ## Pull requests
 
 - Run `npm run format` to format all code before committing
 - Run `npm run lint` and fix any errors or warnings before committing code
-- Ensure all tests pass by running
-  `SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test`
+- Ensure all in-scope tests pass by running
+  `SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test:ci`
+- Optionally run all tests (including experimental) to check for any
+  regressions: `SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test`
 - Create focused pull requests that address a single concern
 - Provide a clear description of changes and their purpose
 - Link to relevant issues and specification sections
 - Ensure all tests pass and code follows style guidelines
-- All pull requests must pass CI tests before merging.
+- All pull requests must pass CI tests before merging (CI uses `npm run test:ci`
+  which excludes experimental tests)

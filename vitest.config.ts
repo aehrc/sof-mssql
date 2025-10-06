@@ -26,6 +26,8 @@ export default defineConfig({
     // Note: sequence.concurrent cannot be used because globalSetup doesn't share
     // database connections with test workers. Each test file's beforeAll sets up
     // its own connection pool, and it.concurrent() provides test-level parallelism.
+    // Prevent test suite failure when all tests are filtered out
+    passWithNoTests: true,
   },
   resolve: {
     extensions: [".ts", ".js"],

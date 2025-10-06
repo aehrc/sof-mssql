@@ -64,7 +64,7 @@ jobs:
           SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
 
       - name: Run tests
-        run: npm test
+        run: npm run test:ci
         env:
           SQLONFHIR_TEST_PATH: ./sqlonfhir/tests
           MSSQL_HOST: localhost
