@@ -202,24 +202,44 @@ export class QueryGenerator {
 
     let statement = `${selectClause}\n${fromClause}`;
 
-    // Build WHERE clause combining resource type filter, test_id filter, and view-level filters
+    // Add WHERE clause
+    const whereCondition = this.buildWhereCondition(
+      resourceTypeFilter,
+      whereClause,
+      context,
+    );
+    if (whereCondition) {
+      statement += `\n${whereCondition}`;
+    }
+
+    return statement;
+  }
+
+  /**
+   * Build WHERE clause combining resource type filter, test_id filter, and view-level filters.
+   */
+  private buildWhereCondition(
+    resourceTypeFilter: string,
+    whereClause: string | null,
+    context: TranspilerContext,
+  ): string | null {
     const whereConditions = [resourceTypeFilter];
+
     if (context.testId) {
       whereConditions.push(
         `[${context.resourceAlias}].[test_id] = '${context.testId}'`,
       );
     }
+
     if (whereClause) {
       whereConditions.push(whereClause);
     }
 
     if (whereConditions.length > 0) {
-      statement += `\nWHERE ${whereConditions.join(" AND ")}`;
+      return `WHERE ${whereConditions.join(" AND ")}`;
     }
 
-    // Debug logging removed
-
-    return statement;
+    return null;
   }
 
   /**
@@ -418,18 +438,14 @@ export class QueryGenerator {
 
     let statement = `${selectClause}\n${fromClause}${applyClauses}`;
 
-    const whereConditions = [resourceTypeFilter];
-    if (context.testId) {
-      whereConditions.push(
-        `[${context.resourceAlias}].[test_id] = '${context.testId}'`,
-      );
-    }
-    if (whereClause) {
-      whereConditions.push(whereClause);
-    }
-
-    if (whereConditions.length > 0) {
-      statement += `\nWHERE ${whereConditions.join(" AND ")}`;
+    // Add WHERE clause
+    const whereCondition = this.buildWhereCondition(
+      resourceTypeFilter,
+      whereClause,
+      context,
+    );
+    if (whereCondition) {
+      statement += `\n${whereCondition}`;
     }
 
     return statement;
