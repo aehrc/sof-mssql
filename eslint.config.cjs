@@ -121,6 +121,15 @@ module.exports = [
     },
   },
 
+  // Test utilities configuration
+  {
+    files: ["src/tests/utils/**/*.ts"],
+    rules: {
+      // Allow console output in test utilities for debugging
+      "no-console": "off",
+    },
+  },
+
   // Ignore patterns
   {
     ignores: [
