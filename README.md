@@ -10,10 +10,10 @@ The easiest way to use sof-mssql is via `npx`:
 
 ```bash
 # Transpile a ViewDefinition from stdin to stdout
-npx sof-mssql <viewdefinition.json >output.sql
+npx sof-mssql <some.ViewDefinition.json >output.sql
 
 # Or use file arguments
-npx sof-mssql --input viewdefinition.json --output output.sql
+npx sof-mssql --input some.ViewDefinition.json --output output.sql
 ```
 
 ## Installation
@@ -33,16 +33,16 @@ stdout or a file.
 
 ```bash
 # Read from stdin, write to stdout
-npx sof-mssql <viewdefinition.json
+npx sof-mssql <some.ViewDefinition.json
 
 # Read from file, write to stdout
-npx sof-mssql --input viewdefinition.json
+npx sof-mssql --input some.ViewDefinition.json
 
 # Read from stdin, write to file
-npx sof-mssql <viewdefinition.json --output query.sql
+npx sof-mssql <some.ViewDefinition.json --output query.sql
 
 # Read from file, write to file
-npx sof-mssql --input viewdefinition.json --output query.sql
+npx sof-mssql --input some.ViewDefinition.json --output query.sql
 
 # Fetch from remote server and transpile
 curl https://example.com/fhir/ViewDefinition/1 | npx sof-mssql
