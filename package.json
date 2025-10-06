@@ -33,8 +33,7 @@
     "sql-on-fhir",
     "mssql",
     "tsql",
-    "healthcare",
-    "hl7"
+    "healthcare"
   ],
   "license": "UNLICENSED",
   "dependencies": {
