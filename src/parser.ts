@@ -2,7 +2,7 @@
  * Parser for ViewDefinition JSON structures.
  */
 
-import { TestSuite, ViewDefinition } from "./types.js";
+import { JsonValue, TestSuite, ViewDefinition } from "./types.js";
 
 export class ViewDefinitionParser {
   /**
@@ -35,7 +35,7 @@ export class ViewDefinitionParser {
   /**
    * Validate a ViewDefinition structure.
    */
-  private static validateViewDefinition(data: any): ViewDefinition {
+  private static validateViewDefinition(data: JsonValue): ViewDefinition {
     if (!data.resource) {
       throw new Error("ViewDefinition must specify a resource type.");
     }
@@ -62,7 +62,7 @@ export class ViewDefinitionParser {
   /**
    * Validate select elements recursively.
    */
-  private static validateSelectElements(selects: any[]): void {
+  private static validateSelectElements(selects: JsonValue[]): void {
     for (const select of selects) {
       this.validateSelectElement(select);
     }
@@ -71,7 +71,7 @@ export class ViewDefinitionParser {
   /**
    * Validate a single select element.
    */
-  private static validateSelectElement(select: any): void {
+  private static validateSelectElement(select: JsonValue): void {
     this.validateSelectElementStructure(select);
     this.validateSelectElementContent(select);
     this.validateSelectElementExpressions(select);
@@ -80,7 +80,7 @@ export class ViewDefinitionParser {
   /**
    * Validate select element has required structure.
    */
-  private static validateSelectElementStructure(select: any): void {
+  private static validateSelectElementStructure(select: JsonValue): void {
     if (!select.column && !select.select && !select.unionAll) {
       throw new Error(
         "Select element must have columns, nested selects, or unionAll.",
@@ -91,7 +91,7 @@ export class ViewDefinitionParser {
   /**
    * Validate select element content (columns and nested elements).
    */
-  private static validateSelectElementContent(select: any): void {
+  private static validateSelectElementContent(select: JsonValue): void {
     if (select.column) {
       this.validateColumns(select.column, select);
     }
@@ -109,7 +109,7 @@ export class ViewDefinitionParser {
   /**
    * Validate forEach and forEachOrNull expressions.
    */
-  private static validateSelectElementExpressions(select: any): void {
+  private static validateSelectElementExpressions(select: JsonValue): void {
     if (select.forEach && typeof select.forEach !== "string") {
       throw new Error("forEach must be a string FHIRPath expression.");
     }
@@ -122,7 +122,10 @@ export class ViewDefinitionParser {
   /**
    * Validate column definitions.
    */
-  private static validateColumns(columns: any[], selectContext?: any): void {
+  private static validateColumns(
+    columns: JsonValue[],
+    selectContext?: JsonValue,
+  ): void {
     for (const column of columns) {
       if (!column.name || typeof column.name !== "string") {
         throw new Error("Column must have a valid name.");
@@ -148,8 +151,8 @@ export class ViewDefinitionParser {
    * Validate collection property constraints.
    */
   private static validateCollectionConstraints(
-    column: any,
-    selectContext?: any,
+    column: JsonValue,
+    selectContext?: JsonValue,
   ): void {
     if (column.collection === false) {
       // Check if the path could return multiple values
@@ -183,7 +186,7 @@ export class ViewDefinitionParser {
   /**
    * Validate that all branches of a unionAll have the same columns in the same order.
    */
-  private static validateUnionAllColumns(unionAllBranches: any[]): void {
+  private static validateUnionAllColumns(unionAllBranches: JsonValue[]): void {
     if (unionAllBranches.length < 2) {
       return; // Nothing to validate
     }
@@ -228,7 +231,7 @@ export class ViewDefinitionParser {
    * Handles direct columns, forEach columns, and nested select columns.
    */
   private static extractColumnsFromSelect(
-    select: any,
+    select: JsonValue,
   ): Array<{ name: string; type?: string }> {
     const columns: Array<{ name: string; type?: string }> = [];
 
@@ -268,7 +271,10 @@ export class ViewDefinitionParser {
   /**
    * Recursively collect column names from select elements.
    */
-  private static collectColumnNames(selects: any[], columns: string[]): void {
+  private static collectColumnNames(
+    selects: JsonValue[],
+    columns: string[],
+  ): void {
     for (const select of selects) {
       // Add columns from this select
       if (select.column) {

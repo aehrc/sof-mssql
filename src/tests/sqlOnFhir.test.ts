@@ -22,6 +22,6 @@ if (!testPath) {
 }
 
 // Create dynamic tests within a describe block
-describe("SQL on FHIR compliance tests", async () => {
-  await createDynamicTests(testPath);
+describe("SQL on FHIR compliance tests", () => {
+  createDynamicTests(testPath);
 });

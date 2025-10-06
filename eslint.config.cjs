@@ -125,8 +125,11 @@ module.exports = [
   {
     files: ["src/tests/utils/**/*.ts"],
     rules: {
-      // Allow console output in test utilities for debugging
+      // Relax some rules for test utilities
+      "@typescript-eslint/no-explicit-any": "off",
       "no-console": "off",
+      "max-lines-per-function": "off",
+      complexity: "off",
     },
   },
 

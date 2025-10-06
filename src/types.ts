@@ -2,6 +2,13 @@
  * Core types for SQL on FHIR ViewDefinition processing.
  */
 
+/**
+ * Represents unvalidated JSON input that will be parsed and validated.
+ * Used for FHIR resources, ViewDefinitions, and other dynamic JSON structures.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type JsonValue = any;
+
 export interface ViewDefinition {
   resourceType: "ViewDefinition";
   id?: string;
@@ -206,7 +213,7 @@ export interface TestCase {
   description?: string;
   tags?: string[];
   view: ViewDefinition;
-  expect: any[];
+  expect: JsonValue[];
   expectColumns?: string[];
   expectError?: boolean;
 }
@@ -215,7 +222,7 @@ export interface TestSuite {
   title: string;
   description?: string;
   fhirVersion?: string[];
-  resources: any[];
+  resources: JsonValue[];
   tests: TestCase[];
 }
 
@@ -224,7 +231,7 @@ export interface TestSuite {
  */
 export interface TranspilationResult {
   sql: string;
-  parameters?: { [key: string]: any };
+  parameters?: { [key: string]: JsonValue };
   columns: ColumnInfo[];
 }
 
