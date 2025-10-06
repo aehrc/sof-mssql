@@ -1,4 +1,4 @@
-# sof-mssql
+# SQL on FHIR view runner for T-SQL and Microsoft SQL Server
 
 A TypeScript library and CLI tool for
 transpiling [SQL on FHIR](https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/) view
@@ -119,18 +119,18 @@ console.log(result.columns);
 
 ## Features
 
-- **SQL on FHIR v2 Compliance** - Implements the SQL on FHIR specification for
+- **SQL on FHIR v2 compliance** - Implements the SQL on FHIR specification for
   transforming FHIR resources into tabular views
-- **FHIRPath Support** - Full support for FHIRPath expressions in column
+- **FHIRPath support** - Full support for FHIRPath expressions in column
   definitions and filters
-- **T-SQL Optimisation** - Generates efficient T-SQL queries using `JSON_VALUE`,
+- **T-SQL optimisation** - Generates efficient T-SQL queries using `JSON_VALUE`,
   `JSON_QUERY`, and `OPENJSON`
-- **forEach Support** - Handles array flattening with `CROSS APPLY` for nested
+- **forEach support** - Handles array flattening with `CROSS APPLY` for nested
   FHIR resources
-- **Union Support** - Supports `unionAll` for polymorphic fields
-- **Type Casting** - Automatic SQL type inference and casting based on FHIR data
+- **Union support** - Supports `unionAll` for polymorphic fields
+- **Type casting** - Automatic SQL type inference and casting based on FHIR data
   types
-- **WHERE Clauses** - Supports view-level filtering with FHIRPath expressions
+- **WHERE clauses** - Supports view-level filtering with FHIRPath expressions
 
 ## SQL on FHIR specification
 
@@ -202,62 +202,6 @@ const fhirResource = {
   // ... rest of ViewDefinition
 };
 const result2 = sqlOnFhir.transpile(fhirResource);
-```
-
-### Accessing the query generator
-
-For advanced use cases, you can access the `QueryGenerator` directly:
-
-```javascript
-import {QueryGenerator} from 'sof-mssql';
-
-const generator = new QueryGenerator({
-  tableName: 'fhir_resources',
-  schemaName: 'dbo'
-});
-
-// Generate query with test ID filter (for testing purposes)
-const result = generator.generateQuery(viewDefinition, 'test-123');
-
-// Generate CREATE VIEW statement
-const createViewSql = generator.generateCreateView(viewDefinition,
-    'patient_view');
-
-// Generate CREATE TABLE statement for materialised views
-const createTableSql = generator.generateCreateTable(viewDefinition,
-    'patient_table');
-```
-
-## Examples
-
-See the [examples](examples/) directory for complete examples of:
-
-- Basic ViewDefinitions
-- forEach array flattening
-- Polymorphic field handling with unionAll
-- Complex FHIRPath expressions
-- View-level filtering
-
-## Development
-
-```bash
-# Install dependencies
-npm install
-
-# Build the project
-npm run build
-
-# Run tests
-npm test
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run linter
-npm run lint
-
-# Format code
-npm run format
 ```
 
 ## Contributing
