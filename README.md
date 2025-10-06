@@ -146,23 +146,11 @@ sof-mssql expects FHIR resources to be stored in a table with the following
 structure:
 
 ```sql
-CREATE TABLE [dbo].[fhir_resources]
-(
-    [
-    id]
-    NVARCHAR
-(
-    64
-) NOT NULL PRIMARY KEY,
-    [resource_type] NVARCHAR
-(
-    64
-) NOT NULL,
-    [json] NVARCHAR
-(
-    MAX
-) NOT NULL,
-    );
+CREATE TABLE [dbo].[fhir_resources] (
+    [id] NVARCHAR (64) NOT NULL PRIMARY KEY,
+    [resource_type] NVARCHAR (64) NOT NULL,
+    [json] NVARCHAR (MAX) NOT NULL,
+);
 ```
 
 The generated queries use:
