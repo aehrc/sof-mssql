@@ -41,7 +41,7 @@ export interface ViewDefinitionResult {
  * @returns Object containing results array and column names in SQL order
  */
 export async function executeViewDefinition(
-  viewDefinition: ViewDefinition | any,
+  viewDefinition: ViewDefinition,
   testId: string,
 ): Promise<ViewDefinitionResult> {
   try {
@@ -115,7 +115,7 @@ export function compareResults(
 
     const sorted: any = {};
     Object.keys(obj)
-      .sort()
+      .sort((a, b) => a.localeCompare(b))
       .forEach((key) => {
         sorted[key] = normalizeObject(obj[key]);
       });
@@ -241,7 +241,7 @@ function arraysEqual<T>(a: T[], b: T[]): boolean {
  * @returns Set of column names that are declared as boolean type
  */
 function extractBooleanColumns(
-  viewDefinition: ViewDefinition | any,
+  viewDefinition: ViewDefinition,
 ): Set<string> {
   const booleanColumns = new Set<string>();
 
