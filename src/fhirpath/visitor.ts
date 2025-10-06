@@ -497,12 +497,25 @@ export class FHIRPathToTSqlVisitor
 
     // Handle subquery results from .where() or .extension() functions
     // Pattern: (SELECT TOP 1 value FROM OPENJSON(...) WHERE ...)
-    if (base.startsWith("(SELECT TOP 1 value FROM OPENJSON")) {
-      // Need to modify the SELECT to include JSON_VALUE on the value column
-      // Convert: (SELECT TOP 1 value FROM OPENJSON(...)...)
-      // To: (SELECT TOP 1 JSON_VALUE(value, '$.member') FROM OPENJSON(...)...)
-      const fromPart = base.substring(base.indexOf(" FROM "));
-      return `(SELECT TOP 1 JSON_VALUE(value, '$.${memberName}')${fromPart}`;
+    // OR: (SELECT TOP 1 JSON_VALUE(value, '$.field') FROM OPENJSON(...) WHERE ...)
+    if (base.startsWith("(SELECT TOP 1 ")) {
+      // Check if it already has JSON_VALUE in the SELECT
+      const jsonValueMatch =
+        /\(SELECT TOP 1 JSON_VALUE\(value, '\$\.([^']+)'\)(.*)/.exec(base);
+      if (jsonValueMatch) {
+        // Already has JSON_VALUE, append to the path
+        // Convert: (SELECT TOP 1 JSON_VALUE(value, '$.field') FROM ...)
+        // To: (SELECT TOP 1 JSON_VALUE(value, '$.field.member') FROM ...)
+        const existingPath = jsonValueMatch[1];
+        const rest = jsonValueMatch[2];
+        return `(SELECT TOP 1 JSON_VALUE(value, '$.${existingPath}.${memberName}')${rest}`;
+      } else if (base.startsWith("(SELECT TOP 1 value FROM OPENJSON")) {
+        // Simple value select, add JSON_VALUE
+        // Convert: (SELECT TOP 1 value FROM OPENJSON(...))
+        // To: (SELECT TOP 1 JSON_VALUE(value, '$.member') FROM OPENJSON(...))
+        const fromPart = base.substring(base.indexOf(" FROM "));
+        return `(SELECT TOP 1 JSON_VALUE(value, '$.${memberName}')${fromPart}`;
+      }
     }
 
     // Handle JSON_VALUE expressions - check this BEFORE JSON_QUERY
@@ -700,6 +713,26 @@ export class FHIRPathToTSqlVisitor
    * Handles paths with array indices like "output[0].value" → "output[0].valueUrl"
    */
   private applyPolymorphicFieldMapping(base: string, typeName: string): string {
+    // Handle SELECT subqueries from extension() function
+    // Pattern: (SELECT TOP 1 JSON_VALUE(value, '$.value') FROM ...)
+    if (base.startsWith("(SELECT TOP 1 JSON_VALUE(value, '$.")) {
+      const suffix = this.getTypeSuffix(typeName);
+      // Find the JSON_VALUE path part
+      const pathMatch = /JSON_VALUE\(value, '\$\.([^']+)'\)/.exec(base);
+      if (pathMatch) {
+        const path = pathMatch[1];
+        if (this.isPolymorphicField(path)) {
+          // Replace the polymorphic field with its typed variant
+          const newPath = `${path}${suffix}`;
+          return base.replace(
+            `JSON_VALUE(value, '$.${path}')`,
+            `JSON_VALUE(value, '$.${newPath}')`,
+          );
+        }
+      }
+      return base;
+    }
+
     // Check if base is a JSON_VALUE call for a polymorphic field
     const match = /JSON_VALUE\(([^,]+),\s*'\$\.([^']+)'\)/.exec(base);
     if (!match) {
