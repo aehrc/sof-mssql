@@ -14,8 +14,13 @@ let isConnected = false;
 /**
  * Database configuration loaded from environment variables.
  */
-const getDatabaseConfig = (): MSSQLConfig | { connectionString: string } => {
-  const config: MSSQLConfig = {
+const getDatabaseConfig = (): MSSQLConfig | string => {
+  // Use connection string if provided
+  if (process.env.MSSQL_CONNECTION_STRING) {
+    return process.env.MSSQL_CONNECTION_STRING;
+  }
+
+  return {
     server: process.env.MSSQL_HOST ?? "localhost",
     port: parseInt(process.env.MSSQL_PORT ?? "1433"),
     database: process.env.MSSQL_DATABASE ?? "testdb",
@@ -27,18 +32,10 @@ const getDatabaseConfig = (): MSSQLConfig | { connectionString: string } => {
       idleTimeoutMillis: 30000,
     },
     options: {
-      encrypt: process.env.MSSQL_ENCRYPT === "false" ? false : true,
-      trustServerCertificate:
-        process.env.MSSQL_TRUST_CERT === "false" ? false : true,
+      encrypt: process.env.MSSQL_ENCRYPT !== "false",
+      trustServerCertificate: process.env.MSSQL_TRUST_CERT !== "false",
     },
   };
-
-  // Use connection string if provided
-  if (process.env.MSSQL_CONNECTION_STRING) {
-    return { connectionString: process.env.MSSQL_CONNECTION_STRING } as any;
-  }
-
-  return config;
 };
 
 /**
@@ -66,7 +63,11 @@ export async function setupDatabase(): Promise<void> {
   }
 
   const config = getDatabaseConfig();
-  globalPool = new ConnectionPool(config);
+  // ConnectionPool constructor accepts either a config object or a connection string
+  globalPool =
+    typeof config === "string"
+      ? new ConnectionPool(config)
+      : new ConnectionPool(config);
 
   try {
     await globalPool.connect();
