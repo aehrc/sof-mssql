@@ -539,14 +539,15 @@ export class FHIRPathToTSqlVisitor
     // Check if the source is a JSON_QUERY and path is array indexing (e.g., $[1])
     // This happens with expressions like name[%constant_index].family
     const queryMatch = /^JSON_QUERY\(([^,]+),\s*'([^']+)'\)$/.exec(source);
-    const isArrayIndexPath = /^\$\[\d+\]$/.test(existingPath);
+    const isArrayIndexPath = /^\$\[\d+]$/.test(existingPath);
 
     if (queryMatch && isArrayIndexPath) {
       // Convert JSON_VALUE(JSON_QUERY(r.json, '$.name'), '$[1]').family
       // into JSON_VALUE(r.json, '$.name[1].family')
       const innerSource = queryMatch[1];
       const arrayPath = queryMatch[2];
-      const index = existingPath.match(/\[(\d+)\]/)?.[1] ?? "0";
+      const indexMatch = /\[(\d+)]/.exec(existingPath);
+      const index = indexMatch?.[1] ?? "0";
       const newPath = `${arrayPath}[${index}].${memberName}`;
       return `JSON_VALUE(${innerSource}, '${newPath}')`;
     }
