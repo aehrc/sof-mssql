@@ -331,8 +331,10 @@ export class FHIRPathToTSqlVisitor
     // Known FHIR array fields should use JSON_QUERY
     const knownArrayFields = [
       "name",
+      "given",
       "telecom",
       "address",
+      "line",
       "identifier",
       "extension",
       "contact",
@@ -518,7 +520,29 @@ export class FHIRPathToTSqlVisitor
     if (pathMatch) {
       const source = pathMatch[1];
       const existingPath = pathMatch[2];
-      // For array access, we need to use array indexing
+
+      // Check if the member being accessed is itself an array field
+      const knownArrayFields = [
+        "name",
+        "given",
+        "telecom",
+        "address",
+        "line",
+        "identifier",
+        "extension",
+        "contact",
+        "output",
+        "item",
+        "udiCarrier",
+      ];
+
+      if (knownArrayFields.includes(memberName)) {
+        // For array-to-array access, use JSON_QUERY to get the nested array
+        const newPath = `${existingPath}[0].${memberName}`;
+        return `JSON_QUERY(${source}, '${newPath}')`;
+      }
+
+      // For array access to scalar fields, we need to use array indexing
       const newPath = `${existingPath}[0].${memberName}`;
       return `JSON_VALUE(${source}, '${newPath}')`;
     }
@@ -1032,6 +1056,11 @@ export class FHIRPathToTSqlVisitor
         return this.context.iterationContext;
       }
 
+      // If the iteration context is a JSON_QUERY (array), check if it's not null and not empty
+      if (iterCtx.includes("JSON_QUERY")) {
+        return `(${this.context.iterationContext} IS NOT NULL AND ${this.context.iterationContext} != '[]')`;
+      }
+
       // Otherwise check if not null
       return `(${this.context.iterationContext} IS NOT NULL)`;
     }
@@ -1060,6 +1089,11 @@ export class FHIRPathToTSqlVisitor
     // If already a boolean expression, return as-is
     if (this.isBooleanExpression(trimmedArg)) {
       return arg;
+    }
+
+    // If the argument is a JSON_QUERY (array), check if it's not null and not empty
+    if (trimmedArg.includes("JSON_QUERY")) {
+      return `(${arg} IS NOT NULL AND ${arg} != '[]')`;
     }
 
     // Otherwise wrap in IS NOT NULL check
