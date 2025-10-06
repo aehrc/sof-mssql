@@ -3,13 +3,70 @@
  */
 
 /**
- * Represents unvalidated JSON input that will be parsed and validated.
- * Used for FHIR resources, ViewDefinitions, and other dynamic JSON structures.
+ * Unvalidated JSON structures from FHIR resources or test data.
+ * These types represent the expected shape of input data before validation.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type JsonValue = any;
 
-export interface ViewDefinition {
+/**
+ * FHIR resource as untyped JSON object.
+ * FHIR resources have dynamic structures that vary by resourceType.
+ */
+export type FhirResource = Record<string, unknown>;
+
+/**
+ * Test expectation result - can be any JSON value.
+ */
+export type TestExpectation = Record<string, unknown>;
+
+/**
+ * SQL parameter value - can be string, number, boolean, or null.
+ */
+export type SqlParameterValue = string | number | boolean | null;
+
+/**
+ * Unvalidated ViewDefinition column from JSON input.
+ * Fields are marked as unknown since validation will check types at runtime.
+ */
+export interface UnvalidatedColumn {
+  name?: unknown;
+  path?: unknown;
+  description?: unknown;
+  collection?: unknown;
+  type?: unknown;
+  [key: string]: unknown;
+}
+
+/**
+ * Unvalidated ViewDefinition select element from JSON input.
+ * Arrays and nested structures use unknown[] to allow iteration while preserving type safety.
+ */
+export interface UnvalidatedSelect {
+  column?: UnvalidatedColumn[];
+  select?: UnvalidatedSelect[];
+  forEach?: unknown;
+  forEachOrNull?: unknown;
+  unionAll?: UnvalidatedSelect[];
+  where?: unknown[];
+  [key: string]: unknown;
+}
+
+/**
+ * Unvalidated ViewDefinition from JSON input.
+ * Top-level structure that accepts any JSON but hints at expected fields.
+ */
+export interface UnvalidatedViewDefinition {
+  resourceType?: unknown;
+  resource?: unknown;
+  select?: UnvalidatedSelect[];
+  constant?: unknown[];
+  [key: string]: unknown;
+}
+
+/**
+ * Validated ViewDefinition with strict typing.
+ * Extends UnvalidatedViewDefinition to support type predicates.
+ */
+export interface ViewDefinition extends UnvalidatedViewDefinition {
   resourceType: "ViewDefinition";
   id?: string;
   url?: string;
@@ -36,7 +93,7 @@ export interface ViewDefinition {
   where?: ViewDefinitionWhere[];
 }
 
-export interface ViewDefinitionSelect {
+export interface ViewDefinitionSelect extends UnvalidatedSelect {
   column?: ViewDefinitionColumn[];
   select?: ViewDefinitionSelect[];
   forEach?: string;
@@ -45,7 +102,7 @@ export interface ViewDefinitionSelect {
   where?: ViewDefinitionWhere[];
 }
 
-export interface ViewDefinitionColumn {
+export interface ViewDefinitionColumn extends UnvalidatedColumn {
   name: string;
   path: string;
   description?: string;
@@ -213,7 +270,7 @@ export interface TestCase {
   description?: string;
   tags?: string[];
   view: ViewDefinition;
-  expect: JsonValue[];
+  expect: TestExpectation[];
   expectColumns?: string[];
   expectError?: boolean;
 }
@@ -222,7 +279,7 @@ export interface TestSuite {
   title: string;
   description?: string;
   fhirVersion?: string[];
-  resources: JsonValue[];
+  resources: FhirResource[];
   tests: TestCase[];
 }
 
@@ -231,7 +288,7 @@ export interface TestSuite {
  */
 export interface TranspilationResult {
   sql: string;
-  parameters?: { [key: string]: JsonValue };
+  parameters?: { [key: string]: SqlParameterValue };
   columns: ColumnInfo[];
 }
 

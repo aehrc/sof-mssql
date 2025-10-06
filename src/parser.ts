@@ -2,21 +2,34 @@
  * Parser for ViewDefinition JSON structures.
  */
 
-import { JsonValue, TestSuite, ViewDefinition } from "./types.js";
+import {
+  TestSuite,
+  UnvalidatedColumn,
+  UnvalidatedSelect,
+  UnvalidatedViewDefinition,
+  ViewDefinition,
+  ViewDefinitionColumn,
+  ViewDefinitionSelect,
+} from "./types.js";
 
 export class ViewDefinitionParser {
   /**
    * Parse a ViewDefinition from JSON.
    */
   static parseViewDefinition(json: string | object): ViewDefinition {
-    const data = typeof json === "string" ? JSON.parse(json) : json;
+    const data: UnvalidatedViewDefinition =
+      typeof json === "string" ? JSON.parse(json) : json;
 
     // Only check resourceType if it's present (for backwards compatibility with test cases)
     if (data.resourceType && data.resourceType !== "ViewDefinition") {
       throw new Error("Invalid resource type. Expected ViewDefinition.");
     }
 
-    return this.validateViewDefinition(data);
+    if (this.isValidViewDefinition(data)) {
+      return data;
+    }
+
+    throw new Error("Invalid ViewDefinition structure.");
   }
 
   /**
@@ -33,10 +46,12 @@ export class ViewDefinitionParser {
   }
 
   /**
-   * Validate a ViewDefinition structure.
+   * Validate and narrow a ViewDefinition structure using type predicate.
    */
-  private static validateViewDefinition(data: JsonValue): ViewDefinition {
-    if (!data.resource) {
+  private static isValidViewDefinition(
+    data: UnvalidatedViewDefinition,
+  ): data is ViewDefinition {
+    if (!data.resource || typeof data.resource !== "string") {
       throw new Error("ViewDefinition must specify a resource type.");
     }
 
@@ -54,33 +69,35 @@ export class ViewDefinitionParser {
     data.status ??= "active";
 
     // Validate select elements
-    this.validateSelectElements(data.select);
-
-    return data as ViewDefinition;
-  }
-
-  /**
-   * Validate select elements recursively.
-   */
-  private static validateSelectElements(selects: JsonValue[]): void {
-    for (const select of selects) {
-      this.validateSelectElement(select);
+    for (const select of data.select) {
+      if (!this.isValidSelect(select)) {
+        return false;
+      }
     }
+
+    return true;
   }
 
   /**
-   * Validate a single select element.
+   * Validate select element using type predicate.
    */
-  private static validateSelectElement(select: JsonValue): void {
-    this.validateSelectElementStructure(select);
-    this.validateSelectElementContent(select);
-    this.validateSelectElementExpressions(select);
+  private static isValidSelect(
+    select: UnvalidatedSelect,
+  ): select is ViewDefinitionSelect {
+    this.validateSelectStructure(select);
+    this.validateSelectExpressions(select);
+
+    return (
+      this.validateSelectColumns(select) &&
+      this.validateNestedSelects(select) &&
+      this.validateUnionAll(select)
+    );
   }
 
   /**
    * Validate select element has required structure.
    */
-  private static validateSelectElementStructure(select: JsonValue): void {
+  private static validateSelectStructure(select: UnvalidatedSelect): void {
     if (!select.column && !select.select && !select.unionAll) {
       throw new Error(
         "Select element must have columns, nested selects, or unionAll.",
@@ -89,27 +106,9 @@ export class ViewDefinitionParser {
   }
 
   /**
-   * Validate select element content (columns and nested elements).
-   */
-  private static validateSelectElementContent(select: JsonValue): void {
-    if (select.column) {
-      this.validateColumns(select.column, select);
-    }
-
-    if (select.select) {
-      this.validateSelectElements(select.select);
-    }
-
-    if (select.unionAll) {
-      this.validateSelectElements(select.unionAll);
-      this.validateUnionAllColumns(select.unionAll);
-    }
-  }
-
-  /**
    * Validate forEach and forEachOrNull expressions.
    */
-  private static validateSelectElementExpressions(select: JsonValue): void {
+  private static validateSelectExpressions(select: UnvalidatedSelect): void {
     if (select.forEach && typeof select.forEach !== "string") {
       throw new Error("forEach must be a string FHIRPath expression.");
     }
@@ -120,43 +119,86 @@ export class ViewDefinitionParser {
   }
 
   /**
-   * Validate column definitions.
+   * Validate columns in a select element.
    */
-  private static validateColumns(
-    columns: JsonValue[],
-    selectContext?: JsonValue,
-  ): void {
-    for (const column of columns) {
-      if (!column.name || typeof column.name !== "string") {
-        throw new Error("Column must have a valid name.");
+  private static validateSelectColumns(select: UnvalidatedSelect): boolean {
+    if (select.column) {
+      for (const column of select.column) {
+        if (!this.isValidColumn(column, select)) {
+          return false;
+        }
       }
-
-      if (!column.path || typeof column.path !== "string") {
-        throw new Error("Column must have a valid FHIRPath expression.");
-      }
-
-      // Validate column name is database-friendly
-      if (!/^[a-zA-Z_]\w*$/.test(column.name)) {
-        throw new Error(
-          `Column name '${column.name}' is not database-friendly. Use alphanumeric and underscores only.`,
-        );
-      }
-
-      // Validate collection constraints
-      this.validateCollectionConstraints(column, selectContext);
     }
+    return true;
+  }
+
+  /**
+   * Validate nested select elements.
+   */
+  private static validateNestedSelects(select: UnvalidatedSelect): boolean {
+    if (select.select) {
+      for (const nestedSelect of select.select) {
+        if (!this.isValidSelect(nestedSelect)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Validate unionAll branches.
+   */
+  private static validateUnionAll(select: UnvalidatedSelect): boolean {
+    if (select.unionAll) {
+      for (const unionSelect of select.unionAll) {
+        if (!this.isValidSelect(unionSelect)) {
+          return false;
+        }
+      }
+      this.validateUnionAllColumns(select.unionAll);
+    }
+    return true;
+  }
+
+  /**
+   * Validate column using type predicate.
+   */
+  private static isValidColumn(
+    column: UnvalidatedColumn,
+    selectContext?: UnvalidatedSelect,
+  ): column is ViewDefinitionColumn {
+    if (!column.name || typeof column.name !== "string") {
+      throw new Error("Column must have a valid name.");
+    }
+
+    if (!column.path || typeof column.path !== "string") {
+      throw new Error("Column must have a valid FHIRPath expression.");
+    }
+
+    // Validate column name is database-friendly
+    if (!/^[a-zA-Z_]\w*$/.test(column.name)) {
+      throw new Error(
+        `Column name '${column.name}' is not database-friendly. Use alphanumeric and underscores only.`,
+      );
+    }
+
+    // Validate collection constraints
+    this.validateCollectionConstraints(column, selectContext);
+
+    return true;
   }
 
   /**
    * Validate collection property constraints.
    */
   private static validateCollectionConstraints(
-    column: JsonValue,
-    selectContext?: JsonValue,
+    column: UnvalidatedColumn,
+    selectContext?: UnvalidatedSelect,
   ): void {
     if (column.collection === false) {
-      // Check if the path could return multiple values
-      const path = column.path;
+      // At this point, path has been validated to be a string in isValidColumn
+      const path = column.path as string;
 
       // Known array fields in FHIR Patient that could return multiple values
       const multiValuedPaths = [
@@ -186,7 +228,9 @@ export class ViewDefinitionParser {
   /**
    * Validate that all branches of a unionAll have the same columns in the same order.
    */
-  private static validateUnionAllColumns(unionAllBranches: JsonValue[]): void {
+  private static validateUnionAllColumns(
+    unionAllBranches: UnvalidatedSelect[],
+  ): void {
     if (unionAllBranches.length < 2) {
       return; // Nothing to validate
     }
@@ -231,14 +275,17 @@ export class ViewDefinitionParser {
    * Handles direct columns, forEach columns, and nested select columns.
    */
   private static extractColumnsFromSelect(
-    select: JsonValue,
+    select: UnvalidatedSelect,
   ): Array<{ name: string; type?: string }> {
     const columns: Array<{ name: string; type?: string }> = [];
 
     // Direct columns
     if (select.column) {
       for (const column of select.column) {
-        columns.push({ name: column.name, type: column.type });
+        columns.push({
+          name: column.name as string,
+          type: column.type as string | undefined,
+        });
       }
     }
 
@@ -272,7 +319,7 @@ export class ViewDefinitionParser {
    * Recursively collect column names from select elements.
    */
   private static collectColumnNames(
-    selects: JsonValue[],
+    selects: ViewDefinitionSelect[],
     columns: string[],
   ): void {
     for (const select of selects) {
