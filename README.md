@@ -43,6 +43,9 @@ npx sof-mssql <viewdefinition.json --output query.sql
 
 # Read from file, write to file
 npx sof-mssql --input viewdefinition.json --output query.sql
+
+# Fetch from remote server and transpile
+curl https://example.com/viewdefinition.json | npx sof-mssql
 ```
 
 ### CLI Options
