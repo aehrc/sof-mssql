@@ -151,41 +151,79 @@ export function compareResults(
 function deepEqual(a: any, b: any): boolean {
   if (a === b) return true;
 
-  if ((a === null || a === undefined) && (b === null || b === undefined))
-    return true;
-  if (a === null || a === undefined || b === null || b === undefined)
-    return false;
+  if (bothNullOrUndefined(a, b)) return true;
+  if (eitherNullOrUndefined(a, b)) return false;
 
   if (typeof a !== typeof b) {
-    // Handle boolean/number conversions for SQL Server BIT columns
-    // SQL Server returns BIT as 0/1, but tests may expect true/false
-    if (typeof a === "boolean" && typeof b === "number") {
-      return (a ? 1 : 0) === b;
-    }
-    if (typeof b === "boolean" && typeof a === "number") {
-      return (b ? 1 : 0) === a;
-    }
-    return false;
+    return handleBooleanNumberConversion(a, b);
   }
 
   if (typeof a === "object") {
-    if (Array.isArray(a) !== Array.isArray(b)) return false;
-
-    if (Array.isArray(a)) {
-      if (a.length !== b.length) return false;
-      for (let i = 0; i < a.length; i++) {
-        if (!deepEqual(a[i], b[i])) return false;
-      }
-      return true;
-    }
-
-    const keysA = Object.keys(a);
-    const keysB = Object.keys(b);
-    if (keysA.length !== keysB.length) return false;
-    return keysA.every((key) => deepEqual(a[key], b[key]));
+    return compareObjects(a, b);
   }
 
   return false;
+}
+
+/**
+ * Check if both values are null or undefined.
+ */
+function bothNullOrUndefined(a: any, b: any): boolean {
+  return (a === null || a === undefined) && (b === null || b === undefined);
+}
+
+/**
+ * Check if either value is null or undefined (but not both).
+ */
+function eitherNullOrUndefined(a: any, b: any): boolean {
+  return a === null || a === undefined || b === null || b === undefined;
+}
+
+/**
+ * Handle boolean/number conversions for SQL Server BIT columns.
+ */
+function handleBooleanNumberConversion(a: any, b: any): boolean {
+  if (typeof a === "boolean" && typeof b === "number") {
+    return (a ? 1 : 0) === b;
+  }
+  if (typeof b === "boolean" && typeof a === "number") {
+    return (b ? 1 : 0) === a;
+  }
+  return false;
+}
+
+/**
+ * Compare objects (arrays or plain objects).
+ */
+function compareObjects(a: any, b: any): boolean {
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+
+  if (Array.isArray(a)) {
+    return compareArrays(a, b);
+  }
+
+  return comparePlainObjects(a, b);
+}
+
+/**
+ * Compare two arrays element by element.
+ */
+function compareArrays(a: any[], b: any[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (!deepEqual(a[i], b[i])) return false;
+  }
+  return true;
+}
+
+/**
+ * Compare two plain objects key by key.
+ */
+function comparePlainObjects(a: any, b: any): boolean {
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every((key) => deepEqual(a[key], b[key]));
 }
 
 /**

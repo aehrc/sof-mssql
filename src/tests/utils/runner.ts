@@ -758,44 +758,87 @@ export class TestRunner {
    */
   private deepEqual(a: any, b: any): boolean {
     if (a === b) return true;
-    if (a === null || a === undefined || b === null || b === undefined)
-      return a === b;
+    if (this.isNullOrUndefined(a) || this.isNullOrUndefined(b)) return a === b;
     if (typeof a !== typeof b) return false;
 
     if (Array.isArray(a)) {
-      if (!Array.isArray(b) || a.length !== b.length) return false;
-      return a.every((item, index) => this.deepEqual(item, b[index]));
+      return this.compareArraysDeep(a, b);
     }
 
     if (typeof a === "object") {
-      const keysA = Object.keys(a);
-      const keysB = Object.keys(b);
-      if (keysA.length !== keysB.length) return false;
-      return keysA.every((key) => this.deepEqual(a[key], b[key]));
+      return this.compareObjectsDeep(a, b);
     }
 
     return false;
   }
 
   /**
+   * Check if value is null or undefined.
+   */
+  private isNullOrUndefined(value: any): boolean {
+    return value === null || value === undefined;
+  }
+
+  /**
+   * Compare two arrays element by element.
+   */
+  private compareArraysDeep(a: any[], b: any): boolean {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((item, index) => this.deepEqual(item, b[index]));
+  }
+
+  /**
+   * Compare two objects key by key.
+   */
+  private compareObjectsDeep(a: any, b: any): boolean {
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+    if (keysA.length !== keysB.length) return false;
+    return keysA.every((key) => this.deepEqual(a[key], b[key]));
+  }
+
+  /**
    * Equality comparison with null handling.
    */
   private isEqual(a: any, b: any): boolean {
-    // Handle null/undefined comparison
-    if ((a === null || a === undefined) && (b === null || b === undefined))
-      return true;
-    if (a === null || a === undefined || b === null || b === undefined)
-      return false;
+    if (this.bothNullOrUndefined(a, b)) return true;
+    if (this.isNullOrUndefined(a) || this.isNullOrUndefined(b)) return false;
 
-    // Handle boolean conversion
+    if (this.isBooleanNumberPair(a, b)) {
+      return this.compareBooleanNumber(a, b);
+    }
+
+    return a === b;
+  }
+
+  /**
+   * Check if both values are null or undefined.
+   */
+  private bothNullOrUndefined(a: any, b: any): boolean {
+    return this.isNullOrUndefined(a) && this.isNullOrUndefined(b);
+  }
+
+  /**
+   * Check if values are a boolean-number pair.
+   */
+  private isBooleanNumberPair(a: any, b: any): boolean {
+    return (
+      (typeof a === "boolean" && typeof b === "number") ||
+      (typeof b === "boolean" && typeof a === "number")
+    );
+  }
+
+  /**
+   * Compare boolean and number values.
+   */
+  private compareBooleanNumber(a: any, b: any): boolean {
     if (typeof a === "boolean" && typeof b === "number") {
       return a === Boolean(b);
     }
     if (typeof b === "boolean" && typeof a === "number") {
       return b === Boolean(a);
     }
-
-    return a === b;
+    return false;
   }
 
   /**
