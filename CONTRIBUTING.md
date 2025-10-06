@@ -32,6 +32,68 @@ Write clear, maintainable TypeScript code by following these principles:
 - Avoid using `any` type unless absolutely necessary
 - Define interfaces for ViewDefinition elements and FHIR resources
 - Use union types and type guards for handling multiple possible types
+- Use type predicates for runtime validation that narrows types from `unknown`
+  to validated types
+
+**Type predicates for runtime validation**
+
+When parsing external data (such as JSON ViewDefinitions), use type predicates
+to validate and narrow types safely:
+
+1. **Accept unvalidated input with `unknown` types** – Never trust external
+   data to match expected types
+2. **Validate at runtime** – Check that all required properties exist and have
+   correct types
+3. **Use type predicates to narrow types** – Return validated data with proper
+   TypeScript types
+
+Structure your types so that validated types extend their unvalidated
+counterparts:
+
+```typescript
+interface UnvalidatedViewDefinition {
+  url?: unknown;
+  name?: unknown;
+  status?: unknown;
+}
+
+interface ViewDefinition extends UnvalidatedViewDefinition {
+  url: string;
+  name: string;
+  status: string;
+}
+```
+
+Implement type predicates using the `data is Type` syntax:
+
+```typescript
+function isViewDefinition(
+  data: UnvalidatedViewDefinition,
+): data is ViewDefinition {
+  return (
+    typeof data.url === "string" &&
+    typeof data.name === "string" &&
+    typeof data.status === "string"
+  );
+}
+```
+
+This pattern is preferred over type assertions (e.g. `as ViewDefinition`)
+because it enforces actual validation rather than blindly trusting the type
+system. Type assertions bypass runtime checks and can lead to runtime errors
+when data doesn't match expectations.
+
+Example usage:
+
+```typescript
+const unvalidatedData: UnvalidatedViewDefinition = JSON.parse(jsonString);
+if (isViewDefinition(unvalidatedData)) {
+  // TypeScript now knows unvalidatedData is ViewDefinition
+  console.log(unvalidatedData.url); // Safe: TypeScript knows url is string
+} else {
+  throw new Error("Invalid ViewDefinition structure");
+}
+```
 
 **Functions and methods**
 
