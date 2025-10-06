@@ -5,21 +5,21 @@
 
 import { Transpiler, TranspilerContext } from "./fhirpath/transpiler.js";
 import {
+  ColumnExpressionGenerator,
+  ForEachProcessor,
+  PathParser,
+  SelectClauseBuilder,
+  SelectCombination,
+  SelectCombinationExpander,
+  WhereClauseBuilder,
+} from "./queryGenerator/index.js";
+import {
   ColumnInfo,
   TranspilationResult,
   ViewDefinition,
   ViewDefinitionConstant,
   ViewDefinitionSelect,
 } from "./types.js";
-import {
-  PathParser,
-  SelectCombination,
-  SelectCombinationExpander,
-  ForEachProcessor,
-  SelectClauseBuilder,
-  WhereClauseBuilder,
-  ColumnExpressionGenerator,
-} from "./queryGenerator/index.js";
 
 export interface QueryGeneratorOptions {
   tableName?: string;
@@ -293,34 +293,5 @@ export class QueryGenerator {
     }
 
     return columns;
-  }
-
-  /**
-   * Generate a CREATE VIEW statement.
-   */
-  generateCreateView(viewDef: ViewDefinition, viewName?: string): string {
-    const result = this.generateQuery(viewDef);
-    const actualViewName = viewName ?? viewDef.name ?? "generated_view";
-
-    return `CREATE VIEW [${this.options.schemaName}].[${actualViewName}] AS\n${result.sql}`;
-  }
-
-  /**
-   * Generate table creation SQL for materialised views.
-   */
-  generateCreateTable(viewDef: ViewDefinition, tableName?: string): string {
-    const columns = this.collectAllColumns(viewDef.select);
-    const actualTableName =
-      tableName ?? (viewDef.name ? `${viewDef.name}_table` : "generated_table");
-
-    const columnDefinitions = columns.map(
-      (col) =>
-        `  [${col.name}] ${col.type}${col.nullable ? " NULL" : " NOT NULL"}`,
-    );
-
-    return `CREATE TABLE [${this.options.schemaName}].[${actualTableName}]
-            (
-                ${columnDefinitions.join(",\n")}
-            )`;
   }
 }

@@ -305,42 +305,4 @@ export class ViewDefinitionParser {
 
     return columns;
   }
-
-  /**
-   * Get all column names from a ViewDefinition in the order they appear.
-   */
-  static getColumnNames(viewDef: ViewDefinition): string[] {
-    const columns: string[] = [];
-    this.collectColumnNames(viewDef.select, columns);
-    return columns;
-  }
-
-  /**
-   * Recursively collect column names from select elements.
-   */
-  private static collectColumnNames(
-    selects: ViewDefinitionSelect[],
-    columns: string[],
-  ): void {
-    for (const select of selects) {
-      // Add columns from this select
-      if (select.column) {
-        for (const column of select.column) {
-          if (!columns.includes(column.name)) {
-            columns.push(column.name);
-          }
-        }
-      }
-
-      // Add columns from nested selects
-      if (select.select) {
-        this.collectColumnNames(select.select, columns);
-      }
-
-      // Add columns from unionAll
-      if (select.unionAll) {
-        this.collectColumnNames(select.unionAll, columns);
-      }
-    }
-  }
 }
