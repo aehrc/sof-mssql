@@ -27,7 +27,7 @@
  * ```
  */
 
-import { config as MSSQLConfig, ConnectionPool, Request } from "mssql";
+import { ConnectionPool, config as MSSQLConfig, Request } from "mssql";
 import { SqlOnFhir } from "../../index.js";
 import { ViewDefinitionParser } from "../../parser";
 import { TestCase, TestSuite } from "../../types";
