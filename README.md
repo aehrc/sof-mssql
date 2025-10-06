@@ -194,8 +194,9 @@ const result2 = sqlOnFhir.transpile(fhirResource);
 
 ## Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
-for details on our code of conduct and the process for submitting pull requests.
+Contributions are welcome! Please read our [CONTRIBUTING](CONTRIBUTING.md)
+and [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) documents for guidelines on how to
+get involved.
 
 ## License
 
