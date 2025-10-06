@@ -166,7 +166,9 @@ export async function cleanupTestData(testId: string): Promise<void> {
     // Delete only data for this specific test
     const deleteRequest = new Request(globalPool);
     deleteRequest.input("testId", testId);
-    await deleteRequest.query(`DELETE FROM ${tableName} WHERE test_id = @testId`);
+    await deleteRequest.query(
+      `DELETE FROM ${tableName} WHERE test_id = @testId`,
+    );
   } catch (error) {
     // Don't silently ignore cleanup failures - they cause subsequent test failures
     throw new Error(

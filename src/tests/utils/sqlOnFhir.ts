@@ -240,9 +240,7 @@ function arraysEqual<T>(a: T[], b: T[]): boolean {
  * @param viewDefinition - The ViewDefinition to extract from
  * @returns Set of column names that are declared as boolean type
  */
-function extractBooleanColumns(
-  viewDefinition: ViewDefinition,
-): Set<string> {
+function extractBooleanColumns(viewDefinition: ViewDefinition): Set<string> {
   const booleanColumns = new Set<string>();
 
   // Recursively extract columns from select definitions
