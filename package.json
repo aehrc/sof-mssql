@@ -12,9 +12,13 @@
   ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "sof-mssql": "./dist/cli.js"
+  },
   "scripts": {
     "antlr": "antlr4ts -visitor grammar/fhirpath.g4 -o src/generated",
     "build": "tsc",
+    "cli": "tsx src/cli.ts",
     "test": "vitest run",
     "test:ci": "vitest run --testNamePattern '^(?!.*#experimental)'",
     "test:watch": "vitest",
@@ -35,6 +39,7 @@
   "license": "UNLICENSED",
   "dependencies": {
     "antlr4ts": "^0.5.0-alpha.4",
+    "commander": "^14.0.1",
     "fhirpath": "^3.15.1"
   },
   "devDependencies": {
@@ -47,6 +52,7 @@
     "eslint": "^9.11.1",
     "mssql": "^11.0.1",
     "prettier": "^3.6.2",
+    "tsx": "^4.20.6",
     "typescript": "^5.6.2",
     "vitest": "^3.2.4"
   },
