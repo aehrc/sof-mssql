@@ -33,13 +33,13 @@ stdout or a file.
 
 ```bash
 # Read from stdin, write to stdout
-cat viewdefinition.json | npx sof-mssql
+npx sof-mssql <viewdefinition.json
 
 # Read from file, write to stdout
 npx sof-mssql --input viewdefinition.json
 
 # Read from stdin, write to file
-cat viewdefinition.json | npx sof-mssql --output query.sql
+npx sof-mssql <viewdefinition.json --output query.sql
 
 # Read from file, write to file
 npx sof-mssql --input viewdefinition.json --output query.sql
@@ -264,5 +264,6 @@ for details on our code of conduct and the process for submitting pull requests.
 
 ## License
 
-Copyright © 2025, Commonwealth Scientific and Industrial Research Organisation (
-CSIRO) ABN 41 687 119 230
+Copyright © 2025, Commonwealth Scientific and Industrial Research Organisation 
+(CSIRO) ABN 41 687 119 230. Licensed under
+the [Apache License, version 2.0](https://www.apache.org/licenses/LICENSE-2.0).
