@@ -8,12 +8,7 @@
 
 import { mkdirSync, writeFileSync } from "fs";
 import { dirname } from "path";
-import type {
-  RunnerTask,
-  RunnerTaskEventPack,
-  RunnerTaskResultPack,
-  RunnerTestFile,
-} from "vitest";
+import type { RunnerTask, RunnerTestFile } from "vitest";
 import type { Reporter } from "vitest/reporters";
 import type { TestReport, TestReportEntry } from "./types";
 
@@ -62,13 +57,6 @@ class SqlOnFhirReporter implements Reporter {
     if (this.options.autoWriteReport && this.options.outputPath) {
       this.writeReport(this.options.outputPath);
     }
-  }
-
-  /**
-   * Get the collected test results.
-   */
-  getTestReport(): TestReport {
-    return this.testReport;
   }
 
   /**
@@ -149,13 +137,6 @@ class SqlOnFhirReporter implements Reporter {
   }
 
   // Optional Vitest reporter methods (can be implemented as needed)
-  onTaskUpdate?(
-    _packs: RunnerTaskResultPack[],
-    _events?: RunnerTaskEventPack[],
-  ): void {
-    // Could be used for real-time result collection
-  }
-
   onInit?(_ctx: any): void {
     // Clear results when reporter initializes
     this.clearResults();
@@ -175,4 +156,5 @@ class SqlOnFhirReporter implements Reporter {
   }
 }
 
+// Used in vitest.config.ts as a custom reporter
 export default SqlOnFhirReporter;
