@@ -32,7 +32,7 @@ export interface SegmentIndexingResult {
  * Handles parsing and interpretation of FHIRPath expressions.
  */
 export class PathParser {
-  private static readonly KNOWN_ARRAY_FIELDS = [
+  private static readonly knownArrayFields = [
     "name",
     "telecom",
     "address",
@@ -106,7 +106,7 @@ export class PathParser {
       const indexedPath = segments
         .map((seg) => {
           const cleanSeg = seg.replace(/\[.*]/, "");
-          if (PathParser.KNOWN_ARRAY_FIELDS.includes(cleanSeg)) {
+          if (PathParser.knownArrayFields.includes(cleanSeg)) {
             return `${cleanSeg}[${arrayIndex}]`;
           }
           return cleanSeg;
@@ -148,7 +148,7 @@ export class PathParser {
       const segment = segments[i];
       const cleanSegment = segment.replace(/\[.*]/, "");
 
-      if (PathParser.KNOWN_ARRAY_FIELDS.includes(cleanSegment)) {
+      if (PathParser.knownArrayFields.includes(cleanSegment)) {
         arraySegments.push(segments.slice(0, i + 1).join("."));
       }
     }

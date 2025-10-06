@@ -83,8 +83,7 @@ export class ForEachProcessor {
   private unionAllHasForEach(unionAllOptions: ViewDefinitionSelect[]): boolean {
     return unionAllOptions.some(
       (unionOption) =>
-        unionOption.forEach ||
-        unionOption.forEachOrNull ||
+        (unionOption.forEach ?? unionOption.forEachOrNull) !== undefined ||
         (unionOption.select && this.hasForEachInSelects(unionOption.select)),
     );
   }

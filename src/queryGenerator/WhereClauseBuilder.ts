@@ -84,24 +84,4 @@ export class WhereClauseBuilder {
 
     return `(${conditions.join(") AND (")})`;
   }
-
-  /**
-   * Build WHERE clause conditions for array filtering in APPLY operations.
-   */
-  buildApplyWhereClauses(
-    arrayIndex: number | null | undefined,
-    whereCondition: string | null | undefined,
-  ): string[] {
-    const whereClauses: string[] = [];
-
-    if (arrayIndex !== null && arrayIndex !== undefined) {
-      whereClauses.push(`[key] = '${arrayIndex}'`);
-    }
-
-    if (whereCondition !== null && whereCondition !== undefined) {
-      whereClauses.push(whereCondition);
-    }
-
-    return whereClauses;
-  }
 }

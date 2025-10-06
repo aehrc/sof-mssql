@@ -11,15 +11,15 @@ import {
   ViewDefinitionConstant,
   ViewDefinitionSelect,
 } from "./types.js";
-import { PathParser } from "./queryGenerator/PathParser.js";
 import {
+  PathParser,
   SelectCombination,
   SelectCombinationExpander,
-} from "./queryGenerator/SelectCombinationExpander.js";
-import { ForEachProcessor } from "./queryGenerator/ForEachProcessor.js";
-import { SelectClauseBuilder } from "./queryGenerator/SelectClauseBuilder.js";
-import { WhereClauseBuilder } from "./queryGenerator/WhereClauseBuilder.js";
-import { ColumnExpressionGenerator } from "./queryGenerator/ColumnExpressionGenerator.js";
+  ForEachProcessor,
+  SelectClauseBuilder,
+  WhereClauseBuilder,
+  ColumnExpressionGenerator,
+} from "./queryGenerator/index.js";
 
 export interface QueryGeneratorOptions {
   tableName?: string;
