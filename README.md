@@ -1,7 +1,7 @@
 # SQL on FHIR view runner for T-SQL and Microsoft SQL Server
 
 A TypeScript library and CLI tool for
-transpiling [SQL on FHIR](https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/) view
+transpiling [SQL on FHIR](https://sql-on-fhir.org/) view
 definitions into T-SQL queries optimised for Microsoft SQL Server.
 
 ## Quick start
