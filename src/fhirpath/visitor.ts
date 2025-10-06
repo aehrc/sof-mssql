@@ -1214,8 +1214,27 @@ export class FHIRPathToTSqlVisitor
 
     const context =
       this.context.iterationContext ?? `${this.context.resourceAlias}.json`;
-    return `ISNULL((SELECT STRING_AGG(ISNULL(value, ''), ${separator}) WITHIN GROUP (ORDER BY [key]) 
-            FROM OPENJSON(${context}) 
+
+    // Check if context is a JSON_QUERY that accesses a nested array path (e.g., '$.name[0].given')
+    // If so, we need to iterate over ALL parent array elements, not just [0]
+    const nestedArrayMatch =
+      /JSON_QUERY\(([^,]+),\s*'(\$\.[^']+)\[0\]\.([^']+)'\)/.exec(context);
+
+    if (nestedArrayMatch) {
+      const source = nestedArrayMatch[1];
+      const parentPath = nestedArrayMatch[2]; // e.g., '$.name'
+      const childField = nestedArrayMatch[3]; // e.g., 'given'
+
+      // Generate SQL that iterates over ALL parent array elements and gets ALL child array values
+      return `ISNULL((SELECT STRING_AGG(ISNULL(childValue.value, ''), ${separator}) WITHIN GROUP (ORDER BY parentItem.[key], childValue.[key])
+              FROM OPENJSON(${source}, '${parentPath}') AS parentItem
+              CROSS APPLY OPENJSON(parentItem.value, '$.${childField}') AS childValue
+              WHERE childValue.type IN (1, 2)), '')`;
+    }
+
+    // Standard join for simple arrays
+    return `ISNULL((SELECT STRING_AGG(ISNULL(value, ''), ${separator}) WITHIN GROUP (ORDER BY [key])
+            FROM OPENJSON(${context})
             WHERE type IN (1, 2)), '')`;
   }
 
