@@ -365,6 +365,10 @@ export class FHIRPathToTSqlVisitor
 
     // Regular JSON property access
     if (this.context.iterationContext) {
+      // Check if the member is a known array field - use JSON_QUERY for arrays
+      if (knownArrayFields.includes(memberName)) {
+        return `JSON_QUERY(${this.context.iterationContext}, '$.${memberName}')`;
+      }
       return `JSON_VALUE(${this.context.iterationContext}, '$.${memberName}')`;
     }
 
