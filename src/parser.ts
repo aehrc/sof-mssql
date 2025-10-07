@@ -20,11 +20,6 @@ export class ViewDefinitionParser {
     const data: UnvalidatedViewDefinition =
       typeof json === "string" ? JSON.parse(json) : json;
 
-    // Only check resourceType if it's present (for backwards compatibility with test cases)
-    if (data.resourceType && data.resourceType !== "ViewDefinition") {
-      throw new Error("Invalid resource type. Expected ViewDefinition.");
-    }
-
     if (this.isValidViewDefinition(data)) {
       return data;
     }
