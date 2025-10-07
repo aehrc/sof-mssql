@@ -166,9 +166,7 @@ $(cat patient_demographics.sql)
 Or directly in SQL Server Management Studio:
 
 ```sql
-CREATE VIEW [dbo
-].[patient_demographics
-] AS
+CREATE VIEW [dbo].[patient_demographics] AS
 SELECT r.id AS [id],
   JSON_VALUE(r.json, '$.name[0].family') AS [family_name],
   CAST(JSON_VALUE(r.json, '$.birthDate') AS DATETIME2) AS [birth_date]
@@ -190,7 +188,7 @@ FROM (
     r.id AS [id], JSON_VALUE(r.json, '$.name[0].family') AS [family_name], CAST (JSON_VALUE(r.json, '$.birthDate') AS DATETIME2) AS [birth_date]
     FROM [dbo].[fhir_resources] AS [r]
     WHERE [r].[resource_type] = 'Patient'
-    ) AS view_results
+) AS view_results
 ```
 
 To refresh a materialised table after data changes:
@@ -304,25 +302,11 @@ sof-mssql expects FHIR resources to be stored in a table with the following
 structure:
 
 ```sql
-CREATE TABLE [dbo].[fhir_resources]
-(
-    [
-    id]
-    INT
-    IDENTITY
-(
-    1,
-    1
-) NOT NULL PRIMARY KEY,
-    [resource_type] NVARCHAR
-(
-    64
-) NOT NULL,
-    [json] NVARCHAR
-(
-    MAX
-) NOT NULL
-    );
+CREATE TABLE [dbo].[fhir_resources] (
+    [id] INT IDENTITY (1, 1) NOT NULL PRIMARY KEY,
+    [resource_type] NVARCHAR (64) NOT NULL,
+    [json] NVARCHAR (MAX) NOT NULL
+);
 
 -- Create an index on resource_type for efficient filtering by resource type
 CREATE INDEX [IX_fhir_resources_resource_type]
