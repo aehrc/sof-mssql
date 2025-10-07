@@ -17,7 +17,7 @@ let queryGeneratorInstance: QueryGenerator | null = null;
  */
 function getQueryGeneratorInstance(): QueryGenerator {
   queryGeneratorInstance ??= new QueryGenerator({
-    tableName: process.env.MSSQL_TABLE ?? "fhir_resources",
+    tableName: process.env.MSSQL_TEST_TABLE ?? "fhir_resources_test",
     schemaName: process.env.MSSQL_SCHEMA ?? "dbo",
     resourceIdColumn: "id",
     resourceJsonColumn: "json",

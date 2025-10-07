@@ -345,7 +345,8 @@ export class FHIRPathToTSqlVisitor
 
     // Handle special identifiers
     if (memberName === "id") {
-      return `${this.context.resourceAlias}.id`;
+      // Extract id from JSON, not from database row ID
+      return `JSON_VALUE(${this.context.resourceAlias}.json, '$.id')`;
     }
 
     // Known FHIR array fields should use JSON_QUERY
@@ -560,36 +561,92 @@ export class FHIRPathToTSqlVisitor
 
   private handleJsonQueryMember(base: string, memberName: string): string {
     const pathMatch = /JSON_QUERY\(([^,]+),\s*'([^']+)'\)/.exec(base);
-    if (pathMatch) {
-      const source = pathMatch[1];
-      const existingPath = pathMatch[2];
-
-      // Check if the member being accessed is itself an array field
-      const knownArrayFields = [
-        "name",
-        "given",
-        "telecom",
-        "address",
-        "line",
-        "identifier",
-        "extension",
-        "contact",
-        "output",
-        "item",
-        "udiCarrier",
-      ];
-
-      if (knownArrayFields.includes(memberName)) {
-        // For array-to-array access, use JSON_QUERY to get the nested array
-        const newPath = `${existingPath}[0].${memberName}`;
-        return `JSON_QUERY(${source}, '${newPath}')`;
-      }
-
-      // For array access to scalar fields, we need to use array indexing
-      const newPath = `${existingPath}[0].${memberName}`;
-      return `JSON_VALUE(${source}, '${newPath}')`;
+    if (!pathMatch) {
+      return `JSON_VALUE(${base}, '$.${memberName}')`;
     }
-    return `JSON_VALUE(${base}, '$.${memberName}')`;
+
+    const source = pathMatch[1];
+    const existingPath = pathMatch[2];
+    const isForEachValue = /forEach_\d+\.value/.test(source);
+
+    const previousFieldIsArray = this.checkPreviousFieldIsArray(
+      existingPath,
+      isForEachValue,
+    );
+    const currentMemberIsArray = this.checkCurrentMemberIsArray(
+      memberName,
+      existingPath,
+      isForEachValue,
+    );
+
+    const newPath = previousFieldIsArray
+      ? `${existingPath}[0].${memberName}`
+      : `${existingPath}.${memberName}`;
+
+    return currentMemberIsArray
+      ? `JSON_QUERY(${source}, '${newPath}')`
+      : `JSON_VALUE(${source}, '${newPath}')`;
+  }
+
+  private checkPreviousFieldIsArray(
+    existingPath: string,
+    isForEachValue: boolean,
+  ): boolean {
+    const alwaysArrayFields = this.getAlwaysArrayFields();
+    const contextDependentFields = ["name"];
+
+    const indexPattern = /\[\d+]/;
+    const pathSegments = existingPath
+      .split(".")
+      .filter((s) => s !== "$" && !indexPattern.exec(s));
+    const lastSegment = pathSegments[pathSegments.length - 1];
+
+    const previousFieldIsAlwaysArray =
+      !!lastSegment && alwaysArrayFields.includes(lastSegment);
+    const previousFieldIsContextArray =
+      !!lastSegment &&
+      contextDependentFields.includes(lastSegment) &&
+      !isForEachValue;
+
+    return previousFieldIsAlwaysArray || previousFieldIsContextArray;
+  }
+
+  private checkCurrentMemberIsArray(
+    memberName: string,
+    existingPath: string,
+    isForEachValue: boolean,
+  ): boolean {
+    const alwaysArrayFields = this.getAlwaysArrayFields();
+    const contextDependentFields = ["name"];
+
+    const indexPattern = /\[\d+]/;
+    const pathSegments = existingPath
+      .split(".")
+      .filter((s) => s !== "$" && !indexPattern.exec(s));
+
+    return (
+      alwaysArrayFields.includes(memberName) ||
+      (contextDependentFields.includes(memberName) &&
+        !isForEachValue &&
+        pathSegments.length === 0)
+    );
+  }
+
+  private getAlwaysArrayFields(): string[] {
+    return [
+      "given",
+      "telecom",
+      "address",
+      "line",
+      "identifier",
+      "extension",
+      "contact",
+      "output",
+      "item",
+      "udiCarrier",
+      "coding",
+      "component",
+    ];
   }
 
   /**
@@ -1236,42 +1293,72 @@ export class FHIRPathToTSqlVisitor
    * Handles exists() function without arguments, using iteration context or base.
    */
   private handleExistsWithoutArgs(base?: string): string {
-    // If we have a base, check if it's an array (JSON_QUERY)
-    if (base?.includes("JSON_QUERY")) {
-      return `(${base} IS NOT NULL AND ${base} != '[]')`;
+    if (base) {
+      return this.handleExistsWithBase(base);
     }
 
-    // Otherwise use iteration context
     if (this.context.iterationContext) {
-      const iterCtx = this.context.iterationContext.trim();
-
-      // If already an EXISTS clause, return as-is
-      if (iterCtx.startsWith("EXISTS")) {
-        return this.context.iterationContext;
-      }
-
-      // If the iteration context is a SELECT subquery (from .where() function), wrap in EXISTS
-      // Check this BEFORE checking for boolean expression, because SELECT may contain operators
-      if (iterCtx.startsWith("(SELECT")) {
-        return `EXISTS ${this.context.iterationContext}`;
-      }
-
-      // If already a boolean expression, return as-is
-      if (this.isBooleanExpression(iterCtx)) {
-        return this.context.iterationContext;
-      }
-
-      // If the iteration context is a JSON_QUERY (array), check if it's not null and not empty
-      if (iterCtx.includes("JSON_QUERY")) {
-        return `(${this.context.iterationContext} IS NOT NULL AND ${this.context.iterationContext} != '[]')`;
-      }
-
-      // Otherwise check if not null
-      return `(${this.context.iterationContext} IS NOT NULL)`;
+      return this.handleExistsWithIterationContext();
     }
 
     // No iteration context or base - check resource
     return `(${this.context.resourceAlias}.json IS NOT NULL)`;
+  }
+
+  private handleExistsWithBase(base: string): string {
+    const trimmedBase = base.trim();
+
+    // SELECT subquery from .where() function - wrap in EXISTS
+    if (trimmedBase.startsWith("(SELECT")) {
+      return `EXISTS ${base}`;
+    }
+
+    // Already a boolean expression - return as-is
+    if (this.isBooleanExpression(base)) {
+      return base;
+    }
+
+    // JSON_QUERY (array) - check if not null and not empty
+    if (base.includes("JSON_QUERY")) {
+      return `(${base} IS NOT NULL AND ${base} != '[]')`;
+    }
+
+    return `(${base} IS NOT NULL)`;
+  }
+
+  private handleExistsWithIterationContext(): string {
+    // This method is only called when iterationContext is defined
+    const iterCtx = this.context.iterationContext;
+    if (!iterCtx) {
+      throw new Error(
+        "handleExistsWithIterationContext called without iteration context",
+      );
+    }
+
+    const trimmedIterCtx = iterCtx.trim();
+
+    // Already an EXISTS clause - return as-is
+    if (trimmedIterCtx.startsWith("EXISTS")) {
+      return iterCtx;
+    }
+
+    // SELECT subquery - wrap in EXISTS
+    if (trimmedIterCtx.startsWith("(SELECT")) {
+      return `EXISTS ${iterCtx}`;
+    }
+
+    // Already a boolean expression - return as-is
+    if (this.isBooleanExpression(trimmedIterCtx)) {
+      return iterCtx;
+    }
+
+    // JSON_QUERY (array) - check if not null and not empty
+    if (trimmedIterCtx.includes("JSON_QUERY")) {
+      return `(${iterCtx} IS NOT NULL AND ${iterCtx} != '[]')`;
+    }
+
+    // Otherwise check if not null
+    return `(${iterCtx} IS NOT NULL)`;
   }
 
   /**
@@ -1452,7 +1539,7 @@ export class FHIRPathToTSqlVisitor
     // Check if context is a JSON_QUERY that accesses a nested array path (e.g., '$.name[0].given')
     // If so, we need to iterate over ALL parent array elements, not just [0]
     const nestedArrayMatch =
-      /JSON_QUERY\(([^,]+),\s*'(\$\.[^']+)\[0\]\.([^']+)'\)/.exec(context);
+      /JSON_QUERY\(([^,]+),\s*'(\$\.[^']+)\[0]\.([^']+)'\)/.exec(context);
 
     if (nestedArrayMatch) {
       const source = nestedArrayMatch[1];
@@ -1487,8 +1574,8 @@ export class FHIRPathToTSqlVisitor
   }
 
   private handleGetResourceKeyFunction(): string {
-    // Returns resourceType/id as the resource key
-    return `CONCAT(${this.context.resourceAlias}.resource_type, '/', ${this.context.resourceAlias}.id)`;
+    // Returns resourceType/id as the resource key, extracting id from JSON
+    return `CONCAT(${this.context.resourceAlias}.resource_type, '/', JSON_VALUE(${this.context.resourceAlias}.json, '$.id'))`;
   }
 
   private handleOfTypeFunction(_args: string[]): string {

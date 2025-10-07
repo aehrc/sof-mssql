@@ -11,6 +11,9 @@ import { ConnectionPool, config as MSSQLConfig, Request } from "mssql";
 let globalPool: ConnectionPool | null = null;
 let isConnected = false;
 
+// Track inserted row IDs for each test for cleanup
+const globalTestData = new Map<string, number[]>();
+
 /**
  * Database configuration loaded from environment variables.
  */
@@ -35,6 +38,7 @@ const getDatabaseConfig = (): MSSQLConfig => {
 
 /**
  * Get table configuration from environment variables.
+ * Uses a test-specific table name to avoid conflicts with production data.
  */
 const getTableConfig = (): {
   tableName: string;
@@ -42,7 +46,7 @@ const getTableConfig = (): {
   resourceIdColumn: string;
   resourceJsonColumn: string;
 } => ({
-  tableName: process.env.MSSQL_TABLE ?? "fhir_resources",
+  tableName: process.env.MSSQL_TEST_TABLE ?? "fhir_resources_test",
   schemaName: process.env.MSSQL_SCHEMA ?? "dbo",
   resourceIdColumn: "id",
   resourceJsonColumn: "json",
@@ -67,6 +71,9 @@ export async function setupDatabase(): Promise<void> {
 
     // Create the table if it doesn't exist
     await createTableIfNotExists();
+
+    // Clear any existing test data from previous runs
+    await clearTestTable();
   } catch (error) {
     throw new Error(
       `Failed to setup database: ${error instanceof Error ? error.message : String(error)}`,
@@ -96,7 +103,7 @@ export async function cleanupDatabase(): Promise<void> {
  * This should be called before each test case.
  *
  * @param resources - FHIR resources to insert
- * @param testId - Unique test identifier for isolation
+ * @param testId - Unique test identifier for isolation (prepended to resource IDs)
  */
 export async function setupTestData(
   resources: any[],
@@ -108,31 +115,44 @@ export async function setupTestData(
 
   const tableConfig = getTableConfig();
 
-  // Insert test resources
+  // Keep track of inserted IDs for cleanup
+  const insertedIds: number[] = [];
+
+  // Insert test resources with test_id for isolation
   for (let i = 0; i < resources.length; i++) {
     const resource = resources[i];
     try {
-      // Generate an ID if the resource doesn't have one (keep it short for NVARCHAR(64) column)
-      const resourceId = resource.id ?? `gen-${i}-${Date.now()}`;
-
       const insertSql = `
         INSERT INTO [${tableConfig.schemaName}].[${tableConfig.tableName}]
-        ([test_id], [${tableConfig.resourceIdColumn}], [resource_type], [${tableConfig.resourceJsonColumn}])
-        VALUES (@testId, @id, @resource_type, @json)
+        ([resource_type], [${tableConfig.resourceJsonColumn}], [test_id])
+        OUTPUT INSERTED.[${tableConfig.resourceIdColumn}]
+        VALUES (@resource_type, @json, @test_id)
       `;
 
       const insertRequest = new Request(globalPool);
-      insertRequest.input("testId", testId);
-      insertRequest.input("id", resourceId);
       insertRequest.input("resource_type", resource.resourceType);
       insertRequest.input("json", JSON.stringify(resource));
+      insertRequest.input("test_id", testId);
 
-      await insertRequest.query(insertSql);
+      const result = await insertRequest.query(insertSql);
+      const insertedId = result.recordset[0]?.[tableConfig.resourceIdColumn];
+      if (insertedId) {
+        insertedIds.push(insertedId);
+      }
     } catch (error) {
       throw new Error(
         `Failed to insert resource ${resource.id ?? `at index ${i}`}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  // Store inserted IDs for cleanup (using a Map keyed by testId)
+  if (!globalTestData.has(testId)) {
+    globalTestData.set(testId, []);
+  }
+  const testData = globalTestData.get(testId);
+  if (testData) {
+    testData.push(...insertedIds);
   }
 }
 
@@ -167,16 +187,58 @@ export async function cleanupTestData(testId: string): Promise<void> {
       return;
     }
 
-    // Delete only data for this specific test
+    // Delete rows by test_id
     const deleteRequest = new Request(globalPool);
-    deleteRequest.input("testId", testId);
+    deleteRequest.input("test_id", testId);
     await deleteRequest.query(
-      `DELETE FROM ${tableName} WHERE test_id = @testId`,
+      `DELETE FROM ${tableName} WHERE [test_id] = @test_id`,
     );
+
+    // Clean up the tracking data
+    globalTestData.delete(testId);
   } catch (error) {
     // Don't silently ignore cleanup failures - they cause subsequent test failures
     throw new Error(
       `Failed to clean up test data: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+/**
+ * Clear all data from the test table.
+ * This should be called once before running tests to ensure a clean state.
+ */
+async function clearTestTable(): Promise<void> {
+  if (!globalPool) {
+    throw new Error("Database not connected");
+  }
+
+  const tableConfig = getTableConfig();
+  const tableName = `[${tableConfig.schemaName}].[${tableConfig.tableName}]`;
+
+  try {
+    // Check if table exists first
+    const checkTableSql = `
+      SELECT COUNT(*) as table_count
+      FROM sys.tables t
+      JOIN sys.schemas s ON t.schema_id = s.schema_id
+      WHERE t.name = '${tableConfig.tableName}' AND s.name = '${tableConfig.schemaName}'
+    `;
+
+    const checkRequest = new Request(globalPool);
+    const checkResult = await checkRequest.query(checkTableSql);
+    const tableExists = checkResult.recordset[0]?.table_count > 0;
+
+    if (!tableExists) {
+      return;
+    }
+
+    // Truncate the table to remove all data
+    const truncateRequest = new Request(globalPool);
+    await truncateRequest.query(`TRUNCATE TABLE ${tableName}`);
+  } catch (error) {
+    throw new Error(
+      `Failed to clear test table: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
@@ -209,14 +271,13 @@ async function createTableIfNotExists(): Promise<void> {
       return;
     }
 
-    // Create table with composite primary key including test_id for parallel execution
+    // Create test table with test_id column for concurrent test isolation
     const createTableSql = `
       CREATE TABLE ${tableName} (
-        [test_id] NVARCHAR(128) NOT NULL,
-        [${tableConfig.resourceIdColumn}] NVARCHAR(64) NOT NULL,
+        [${tableConfig.resourceIdColumn}] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         [resource_type] NVARCHAR(64) NOT NULL,
         [${tableConfig.resourceJsonColumn}] NVARCHAR(MAX) NOT NULL,
-        PRIMARY KEY ([test_id], [${tableConfig.resourceIdColumn}], [resource_type])
+        [test_id] NVARCHAR(255) NOT NULL
       )
     `;
 

@@ -10,7 +10,8 @@ import { ViewDefinitionWhere } from "../types.js";
  */
 export class WhereClauseBuilder {
   /**
-   * Build complete WHERE clause combining resource type filter, test_id filter, and view-level filters.
+   * Build complete WHERE clause combining resource type filter and view-level filters.
+   * For test execution, testId is used to filter test data in the test table.
    */
   buildWhereClause(
     resourceType: string,
@@ -24,7 +25,7 @@ export class WhereClauseBuilder {
     // Add resource type filter.
     conditions.push(`[${resourceAlias}].[resource_type] = '${resourceType}'`);
 
-    // Add test_id filter if present.
+    // Add test_id filter for test isolation (only used in test table which has test_id column).
     if (testId) {
       conditions.push(`[${resourceAlias}].[test_id] = '${testId}'`);
     }
