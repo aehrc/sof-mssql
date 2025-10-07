@@ -50,18 +50,50 @@ export class PathParser {
     path: string,
     context: TranspilerContext,
   ): FhirPathWhereResult {
-    const whereMatch = /^(.+)\.where\((.*)\)$/.exec(path);
-    if (!whereMatch) {
+    // Find .where( in the path.
+    const whereIndex = path.indexOf(".where(");
+    if (whereIndex === -1) {
       return { path, whereCondition: null };
     }
 
-    const basePath = whereMatch[1];
-    const condition = whereMatch[2].trim();
+    const basePath = path.substring(0, whereIndex);
+
+    // Find the matching closing parenthesis using balanced counting.
+    let parenCount = 0;
+    let conditionEnd = -1;
+    const whereStart = whereIndex + 7; // Position after ".where(".
+
+    for (let i = whereStart; i < path.length; i++) {
+      if (path[i] === "(") {
+        parenCount++;
+      } else if (path[i] === ")") {
+        if (parenCount === 0) {
+          conditionEnd = i;
+          break;
+        }
+        parenCount--;
+      }
+    }
+
+    if (conditionEnd === -1) {
+      throw new Error(`Unmatched parentheses in .where() function: ${path}`);
+    }
+
+    const condition = path.substring(whereStart, conditionEnd).trim();
+    let remainingPath = path.substring(conditionEnd + 1);
+
+    // Handle .first() by converting it to [0] array indexing.
+    if (remainingPath === ".first()") {
+      remainingPath = "[0]";
+    }
+
+    // If there's a remaining path, append it to the base path.
+    const fullPath = remainingPath ? `${basePath}${remainingPath}` : basePath;
 
     // Handle .where(false) - filter out everything.
     if (condition === "false") {
       return {
-        path: basePath,
+        path: fullPath,
         whereCondition: "1 = 0", // Always false.
       };
     }
@@ -76,7 +108,7 @@ export class PathParser {
 
       const sqlCondition = Transpiler.transpile(condition, itemContext);
       return {
-        path: basePath,
+        path: fullPath,
         whereCondition: sqlCondition,
       };
     } catch (error) {
