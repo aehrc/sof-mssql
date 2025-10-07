@@ -10,6 +10,7 @@ import { Transpiler, TranspilerContext } from "../fhirpath/transpiler.js";
 export interface FhirPathWhereResult {
   path: string;
   whereCondition: string | null;
+  useFirst: boolean;
 }
 
 /**
@@ -94,7 +95,7 @@ export class PathParser {
   ): FhirPathWhereResult {
     const whereIndex = path.indexOf(".where(");
     if (whereIndex === -1) {
-      return { path, whereCondition: null };
+      return { path, whereCondition: null, useFirst: false };
     }
 
     const basePath = path.substring(0, whereIndex);
@@ -108,9 +109,10 @@ export class PathParser {
     const condition = path.substring(whereStart, conditionEnd).trim();
     let remainingPath = path.substring(conditionEnd + 1);
 
-    // Handle .first() by converting it to [0] array indexing.
-    if (remainingPath === ".first()") {
-      remainingPath = "[0]";
+    // Detect .first() to apply TOP 1 in SQL generation.
+    const useFirst = remainingPath === ".first()";
+    if (useFirst) {
+      remainingPath = ""; // Remove .first() from path - it will be handled via TOP 1
     }
 
     const fullPath = remainingPath ? `${basePath}${remainingPath}` : basePath;
@@ -120,12 +122,14 @@ export class PathParser {
       return {
         path: fullPath,
         whereCondition: "1 = 0",
+        useFirst: false,
       };
     }
 
     return {
       path: fullPath,
       whereCondition: this.transpileWhereCondition(condition, context),
+      useFirst,
     };
   }
 

@@ -383,8 +383,11 @@ export class ForEachProcessor {
     const applyAlias = forEachContext.currentForEachAlias ?? "";
     const sourceExpression = forEachContext.forEachSource ?? "";
 
-    const { path: pathWithoutWhere, whereCondition } =
-      this.pathParser.parseFhirPathWhere(rawPath ?? "", forEachContext);
+    const {
+      path: pathWithoutWhere,
+      whereCondition,
+      useFirst,
+    } = this.pathParser.parseFhirPathWhere(rawPath ?? "", forEachContext);
     const { path: forEachPath, arrayIndex } =
       this.pathParser.parseArrayIndexing(pathWithoutWhere);
     const arrayPaths = this.pathParser.detectArrayFlatteningPaths(forEachPath);
@@ -407,6 +410,7 @@ export class ForEachProcessor {
       applyAlias,
       arrayIndex,
       whereCondition,
+      useFirst,
     );
   }
 
@@ -420,13 +424,20 @@ export class ForEachProcessor {
     applyAlias: string,
     arrayIndex: number | null,
     whereCondition: string | null,
+    useFirst: boolean = false,
   ): string {
     const whereClauses = this.buildWhereClauses(arrayIndex, whereCondition);
 
-    if (whereClauses.length > 0) {
+    if (whereClauses.length > 0 || useFirst) {
+      // Build SELECT with WHERE clause and/or TOP 1 for .first()
+      const topClause = useFirst ? "TOP 1 " : "";
+      const orderBy = useFirst ? " ORDER BY [key]" : "";
+      const whereClause =
+        whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
       return `\n${applyType} (
-        SELECT * FROM OPENJSON(${sourceExpression}, '$.${forEachPath}')
-        WHERE ${whereClauses.join(" AND ")}
+        SELECT ${topClause}* FROM OPENJSON(${sourceExpression}, '$.${forEachPath}')
+        ${whereClause}${orderBy}
       ) AS ${applyAlias}`;
     }
 
