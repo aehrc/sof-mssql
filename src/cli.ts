@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 
 /**
- * CLI for transpiling ViewDefinitions to T-SQL.
- * Reads ViewDefinition JSON from stdin or file and outputs SQL to stdout or file.
+ * CLI for SQL on FHIR tooling.
+ * Supports transpiling ViewDefinitions and loading NDJSON data.
  */
 
 import { Command } from "commander";
 import { readFileSync, writeFileSync } from "fs";
 import { SqlOnFhir } from "./index.js";
+import { createLoadCommand } from "./load.js";
 
 /**
  * Read input from stdin or file.
@@ -37,6 +38,43 @@ function writeOutput(sql: string, outputFile?: string): void {
 }
 
 /**
+ * Create the transpile command (default behaviour).
+ */
+function createTranspileCommand(): Command {
+  const command = new Command("transpile");
+
+  command
+    .description("Transpile SQL on FHIR ViewDefinitions to T-SQL queries")
+    .option(
+      "-i, --input <file>",
+      "Input ViewDefinition JSON file (default: stdin)",
+    )
+    .option("-o, --output <file>", "Output SQL file (default: stdout)")
+    .action(async (options: { input?: string; output?: string }) => {
+      try {
+        // Read ViewDefinition from stdin or file.
+        const input = await readInput(options.input);
+
+        // Parse and validate JSON.
+        const viewDefinition: object = JSON.parse(input);
+
+        // Transpile to SQL.
+        const sqlOnFhir = new SqlOnFhir();
+        const result = sqlOnFhir.transpile(viewDefinition);
+
+        // Write SQL to stdout or file.
+        writeOutput(result.sql, options.output);
+      } catch (err) {
+        console.error(
+          `Error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        process.exit(1);
+      }
+    });
+
+  return command;
+}
+/**
  * Main CLI entry point.
  */
 async function main(): Promise<void> {
@@ -44,35 +82,19 @@ async function main(): Promise<void> {
 
   program
     .name("sof-mssql")
-    .description("Transpile SQL on FHIR ViewDefinitions to T-SQL queries")
-    .version("1.0.0")
-    .option(
-      "-i, --input <file>",
-      "Input ViewDefinition JSON file (default: stdin)",
-    )
-    .option("-o, --output <file>", "Output SQL file (default: stdout)")
-    .parse(process.argv);
+    .description("SQL on FHIR tooling for MS SQL Server")
+    .version("1.0.0");
 
-  const options = program.opts<{ input?: string; output?: string }>();
+  // Add subcommands.
+  program.addCommand(createTranspileCommand());
+  program.addCommand(createLoadCommand());
 
-  try {
-    // Read ViewDefinition from stdin or file.
-    const input = await readInput(options.input);
+  // Parse arguments.
+  await program.parseAsync(process.argv);
 
-    // Parse and validate JSON.
-    const viewDefinition: object = JSON.parse(input);
-
-    // Transpile to SQL.
-    const sqlOnFhir = new SqlOnFhir();
-    const result = sqlOnFhir.transpile(viewDefinition);
-
-    // Write SQL to stdout or file.
-    writeOutput(result.sql, options.output);
-  } catch (error) {
-    console.error(
-      `Error: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    process.exit(1);
+  // If no command specified, show help.
+  if (process.argv.length <= 2) {
+    program.help();
   }
 }
 

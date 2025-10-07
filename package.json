@@ -19,6 +19,8 @@
     "antlr": "antlr4ts -visitor grammar/fhirpath.g4 -o src/generated",
     "build": "tsc",
     "cli": "tsx src/cli.ts",
+    "cli:load": "tsx src/cli.ts load",
+    "cli:transpile": "tsx src/cli.ts transpile",
     "test": "vitest run",
     "test:ci": "vitest run --testNamePattern '^(?!.*#experimental)'",
     "test:watch": "vitest",

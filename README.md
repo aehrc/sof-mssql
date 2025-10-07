@@ -1,19 +1,31 @@
 # SQL on FHIR view runner for T-SQL and Microsoft SQL Server
 
-A TypeScript library and CLI tool for
-transpiling [SQL on FHIR](https://sql-on-fhir.org/) view
-definitions into T-SQL queries optimised for Microsoft SQL Server.
+A TypeScript library and CLI tool for transpiling [SQL on FHIR](https://sql-on-fhir.org/) view definitions into T-SQL queries optimised for Microsoft SQL Server.
+
+## Features
+
+- **SQL on FHIR v2 compliance** - Implements the [SQL on FHIR v2 specification](https://sql-on-fhir.org/ig/2.0.0/) for transforming FHIR resources into tabular views
+- **FHIRPath support** - Full support for FHIRPath expressions in column definitions and filters
+- **T-SQL optimisation** - Generates efficient T-SQL queries using `JSON_VALUE`, `JSON_QUERY`, and `OPENJSON`
+- **forEach support** - Handles array flattening with `CROSS APPLY` for nested FHIR resources
+- **Union support** - Supports `unionAll` for polymorphic fields
+- **Type casting** - Automatic SQL type inference and casting based on FHIR data types
+- **WHERE clauses** - Supports view-level filtering with FHIRPath expressions
+- **Bulk NDJSON loader** - Built-in loader for importing FHIR resources from NDJSON files
 
 ## Quick start
 
 The easiest way to use sof-mssql is via `npx`:
 
 ```bash
+# Load FHIR resources from NDJSON files
+npx sof-mssql load ./data --host localhost --user sa --password pass --database fhir
+
 # Transpile a ViewDefinition from stdin to stdout
-npx sof-mssql <some.ViewDefinition.json >output.sql
+npx sof-mssql transpile <some.ViewDefinition.json >output.sql
 
 # Or use file arguments
-npx sof-mssql --input some.ViewDefinition.json --output output.sql
+npx sof-mssql transpile --input some.ViewDefinition.json --output output.sql
 ```
 
 ## Installation
@@ -26,47 +38,100 @@ npm install sof-mssql
 
 ## CLI usage
 
-The CLI reads ViewDefinition JSON from stdin or a file, and outputs T-SQL to
-stdout or a file.
+The CLI provides two main commands: `load` for bulk loading NDJSON files into SQL Server, and `transpile` for converting ViewDefinitions to T-SQL.
 
-### Basic usage
+### Loading NDJSON files
+
+Bulk load FHIR resources from NDJSON files into SQL Server:
+
+```bash
+# Load all NDJSON files from a directory
+npx sof-mssql load ./data \
+  --host localhost \
+  --user sa \
+  --password yourpassword \
+  --database fhir
+
+# Load with environment variables
+export MSSQL_HOST=localhost MSSQL_USER=sa MSSQL_PASSWORD=pass MSSQL_DATABASE=fhir
+npx sof-mssql load ./data
+
+# Load with custom table and batch settings
+npx sof-mssql load ./data \
+  --table-name my_resources \
+  --batch-size 5000 \
+  --parallel 2
+
+# Preview what would be loaded
+npx sof-mssql load ./data --dry-run
+```
+
+**File naming:** Files must follow the pattern `{ResourceType}.ndjson` (e.g., `Patient.ndjson`, `Observation.ndjson`). The resource type is extracted from the filename and stored in the `resource_type` column.
+
+**Database options:**
+- `--host <host>` - Database server hostname
+- `--port <port>` - Database server port (default: 1433)
+- `--user <user>` - Database username
+- `--password <password>` - Database password
+- `--database <database>` - Database name
+- `--trust-server-certificate` - Trust server certificate
+
+**Loading options:**
+- `--table-name <name>` - Table name (default: `fhir_resources`)
+- `--schema-name <name>` - Schema name (default: `dbo`)
+- `--resource-type <type>` - Load only specific resource type
+- `--truncate` - Truncate table before loading
+- `--no-create-table` - Don't create table if it doesn't exist
+
+**Performance options:**
+- `--batch-size <size>` - Rows per batch (default: 1000)
+- `--parallel <count>` - Parallel file processing (default: 4, use 1-2 for best reliability)
+
+**Output options:**
+- `--dry-run` - Preview without loading
+- `--verbose` - Show detailed progress
+- `--progress` - Show progress bar
+- `--quiet` - Minimal output
+- `--continue-on-error` - Continue if a file fails
+
+### Transpiling ViewDefinitions
+
+Convert SQL on FHIR ViewDefinitions to T-SQL:
 
 ```bash
 # Read from stdin, write to stdout
-npx sof-mssql <some.ViewDefinition.json
+npx sof-mssql transpile <some.ViewDefinition.json
 
 # Read from file, write to stdout
-npx sof-mssql --input some.ViewDefinition.json
+npx sof-mssql transpile --input some.ViewDefinition.json
 
 # Read from stdin, write to file
-npx sof-mssql <some.ViewDefinition.json --output query.sql
+npx sof-mssql transpile <some.ViewDefinition.json --output query.sql
 
 # Read from file, write to file
-npx sof-mssql --input some.ViewDefinition.json --output query.sql
+npx sof-mssql transpile --input some.ViewDefinition.json --output query.sql
 
 # Fetch from remote server and transpile
-curl https://example.com/fhir/ViewDefinition/1 | npx sof-mssql
+curl https://example.com/fhir/ViewDefinition/1 | npx sof-mssql transpile
 ```
 
-### CLI options
-
+**Options:**
 - `-i, --input <file>` - Input ViewDefinition JSON file (default: stdin)
 - `-o, --output <file>` - Output SQL file (default: stdout)
+
+**Global options:**
 - `-V, --version` - Output the version number
 - `-h, --help` - Display help information
 
 ## Programmatic usage
 
+### Basic usage
+
 ```javascript
 import {SqlOnFhir} from 'sof-mssql';
 
-// Create an instance with optional configuration
-const sqlOnFhir = new SqlOnFhir({
-  tableName: 'fhir_resources',    // Default table name
-  schemaName: 'dbo',              // Default schema name
-  resourceIdColumn: 'id',         // Column containing resource ID
-  resourceJsonColumn: 'json'      // Column containing resource JSON
-});
+// Create an instance with default configuration
+const sqlOnFhir = new SqlOnFhir();
 
 // Transpile a ViewDefinition to T-SQL
 const viewDefinition = {
@@ -117,51 +182,6 @@ console.log(result.columns);
 // ]
 ```
 
-## Features
-
-- **SQL on FHIR v2 compliance** - Implements the SQL on FHIR specification for
-  transforming FHIR resources into tabular views
-- **FHIRPath support** - Full support for FHIRPath expressions in column
-  definitions and filters
-- **T-SQL optimisation** - Generates efficient T-SQL queries using `JSON_VALUE`,
-  `JSON_QUERY`, and `OPENJSON`
-- **forEach support** - Handles array flattening with `CROSS APPLY` for nested
-  FHIR resources
-- **Union support** - Supports `unionAll` for polymorphic fields
-- **Type casting** - Automatic SQL type inference and casting based on FHIR data
-  types
-- **WHERE clauses** - Supports view-level filtering with FHIRPath expressions
-
-## SQL on FHIR specification
-
-This library implements
-the [SQL on FHIR v2 specification](https://sql-on-fhir.org/ig/2.0.0/),
-which defines a standard way to create relational views of FHIR data.
-ViewDefinitions describe how to extract and flatten FHIR resources into tabular
-structures suitable for SQL queries and analytics.
-
-## Database setup
-
-sof-mssql expects FHIR resources to be stored in a table with the following
-structure:
-
-```sql
-CREATE TABLE [dbo].[fhir_resources] (
-    [id] NVARCHAR (64) NOT NULL PRIMARY KEY,
-    [resource_type] NVARCHAR (64) NOT NULL,
-    [json] NVARCHAR (MAX) NOT NULL,
-);
-```
-
-The generated queries use:
-
-- `resource_type` column for filtering by FHIR resource type
-- `json` column containing the complete FHIR resource as JSON
-- SQL Server's JSON functions (`JSON_VALUE`, `JSON_QUERY`, `OPENJSON`) for data
-  extraction
-
-## Advanced usage
-
 ### Custom table configuration
 
 ```javascript
@@ -191,6 +211,30 @@ const fhirResource = {
 };
 const result2 = sqlOnFhir.transpile(fhirResource);
 ```
+
+## Database setup
+
+### Table structure
+
+sof-mssql expects FHIR resources to be stored in a table with the following structure:
+
+```sql
+CREATE TABLE [dbo].[fhir_resources] (
+    [id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    [resource_type] NVARCHAR(64) NOT NULL,
+    [json] NVARCHAR(MAX) NOT NULL
+);
+```
+
+The generated queries use:
+
+- `resource_type` column for filtering by FHIR resource type
+- `json` column containing the complete FHIR resource as JSON
+- SQL Server's JSON functions (`JSON_VALUE`, `JSON_QUERY`, `OPENJSON`) for data extraction
+
+### Loading data
+
+The easiest way to populate your database is using the built-in NDJSON loader (see [Loading NDJSON files](#loading-ndjson-files) above), which automatically creates the table with the correct structure. All FHIR resources are stored in a single table (default: `fhir_resources`), with the resource type extracted from the filename.
 
 ## Contributing
 

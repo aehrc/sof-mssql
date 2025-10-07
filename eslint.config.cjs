@@ -75,7 +75,7 @@ module.exports = [
       complexity: ["error", 10],
       "max-depth": ["error", 4],
       "max-lines-per-function": ["error", 50],
-      "no-console": ["warn", { allow: ["warn", "error"] }],
+      "no-console": "off",
       "no-debugger": "error",
       "no-eval": "error",
       "no-implied-eval": "error",
