@@ -43,6 +43,48 @@ export class PathParser {
   ];
 
   /**
+   * Find the matching closing parenthesis for .where() using balanced counting.
+   */
+  private findWhereClosingParen(path: string, whereStart: number): number {
+    let parenCount = 0;
+
+    for (let i = whereStart; i < path.length; i++) {
+      if (path[i] === "(") {
+        parenCount++;
+      } else if (path[i] === ")") {
+        if (parenCount === 0) {
+          return i;
+        }
+        parenCount--;
+      }
+    }
+
+    return -1;
+  }
+
+  /**
+   * Transpile a where condition to SQL.
+   */
+  private transpileWhereCondition(
+    condition: string,
+    context: TranspilerContext,
+  ): string {
+    const itemContext: TranspilerContext = {
+      resourceAlias: "forEach_item",
+      constants: context.constants,
+      iterationContext: "value",
+    };
+
+    try {
+      return Transpiler.transpile(condition, itemContext);
+    } catch (error) {
+      throw new Error(
+        `Failed to transpile .where() condition "${condition}": ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
    * Parse FHIRPath .where() function from a forEach path.
    * Transpiles the where condition to SQL using the FHIRPath transpiler.
    */
@@ -50,30 +92,14 @@ export class PathParser {
     path: string,
     context: TranspilerContext,
   ): FhirPathWhereResult {
-    // Find .where( in the path.
     const whereIndex = path.indexOf(".where(");
     if (whereIndex === -1) {
       return { path, whereCondition: null };
     }
 
     const basePath = path.substring(0, whereIndex);
-
-    // Find the matching closing parenthesis using balanced counting.
-    let parenCount = 0;
-    let conditionEnd = -1;
     const whereStart = whereIndex + 7; // Position after ".where(".
-
-    for (let i = whereStart; i < path.length; i++) {
-      if (path[i] === "(") {
-        parenCount++;
-      } else if (path[i] === ")") {
-        if (parenCount === 0) {
-          conditionEnd = i;
-          break;
-        }
-        parenCount--;
-      }
-    }
+    const conditionEnd = this.findWhereClosingParen(path, whereStart);
 
     if (conditionEnd === -1) {
       throw new Error(`Unmatched parentheses in .where() function: ${path}`);
@@ -87,35 +113,20 @@ export class PathParser {
       remainingPath = "[0]";
     }
 
-    // If there's a remaining path, append it to the base path.
     const fullPath = remainingPath ? `${basePath}${remainingPath}` : basePath;
 
     // Handle .where(false) - filter out everything.
     if (condition === "false") {
       return {
         path: fullPath,
-        whereCondition: "1 = 0", // Always false.
+        whereCondition: "1 = 0",
       };
     }
 
-    // Transpile the where condition using FHIRPath transpiler.
-    try {
-      const itemContext: TranspilerContext = {
-        resourceAlias: "forEach_item",
-        constants: context.constants,
-        iterationContext: "value",
-      };
-
-      const sqlCondition = Transpiler.transpile(condition, itemContext);
-      return {
-        path: fullPath,
-        whereCondition: sqlCondition,
-      };
-    } catch (error) {
-      throw new Error(
-        `Failed to transpile .where() condition "${condition}": ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+    return {
+      path: fullPath,
+      whereCondition: this.transpileWhereCondition(condition, context),
+    };
   }
 
   /**
