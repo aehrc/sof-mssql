@@ -361,6 +361,8 @@ export class FHIRPathToTSqlVisitor
       "output",
       "item",
       "udiCarrier",
+      "coding",
+      "component",
     ];
 
     // Regular JSON property access
@@ -590,25 +592,40 @@ export class FHIRPathToTSqlVisitor
     return `JSON_VALUE(${base}, '$.${memberName}')`;
   }
 
-  private handleJsonValueMember(base: string, memberName: string): string {
-    // Match JSON_VALUE with potentially nested function calls in the first argument
-    // We need to find the last comma before the closing quote to split properly
-    const pathMatch = /^JSON_VALUE\((.*),\s*'([^']+)'\)$/.exec(base);
-    if (!pathMatch) {
-      return `JSON_VALUE(${base}, '$.${memberName}')`;
-    }
+  /**
+   * Checks if a member name represents a FHIR array field.
+   */
+  private isArrayField(memberName: string): boolean {
+    const knownArrayFields = [
+      "name",
+      "given",
+      "telecom",
+      "address",
+      "line",
+      "identifier",
+      "extension",
+      "contact",
+      "output",
+      "item",
+      "udiCarrier",
+      "coding",
+      "component",
+    ];
+    return knownArrayFields.includes(memberName);
+  }
 
-    const source = pathMatch[1];
-    const existingPath = pathMatch[2];
-
-    // Check if the source is a JSON_QUERY and path is array indexing (e.g., $[1])
-    // This happens with expressions like name[%constant_index].family
+  /**
+   * Handles nested JSON_QUERY with array indexing.
+   */
+  private handleNestedQueryWithIndex(
+    source: string,
+    existingPath: string,
+    memberName: string,
+  ): string | null {
     const queryMatch = /^JSON_QUERY\(([^,]+),\s*'([^']+)'\)$/.exec(source);
     const isArrayIndexPath = /^\$\[\d+]$/.test(existingPath);
 
     if (queryMatch && isArrayIndexPath) {
-      // Convert JSON_VALUE(JSON_QUERY(r.json, '$.name'), '$[1]').family
-      // into JSON_VALUE(r.json, '$.name[1].family')
       const innerSource = queryMatch[1];
       const arrayPath = queryMatch[2];
       const indexMatch = /\[(\d+)]/.exec(existingPath);
@@ -617,15 +634,41 @@ export class FHIRPathToTSqlVisitor
       return `JSON_VALUE(${innerSource}, '${newPath}')`;
     }
 
-    // Check if the path already has an array index (e.g., $.name[1])
-    // If so, just append the member name directly
+    return null;
+  }
+
+  private handleJsonValueMember(base: string, memberName: string): string {
+    const pathMatch = /^JSON_VALUE\((.*),\s*'([^']+)'\)$/.exec(base);
+    if (!pathMatch) {
+      return `JSON_VALUE(${base}, '$.${memberName}')`;
+    }
+
+    const source = pathMatch[1];
+    const existingPath = pathMatch[2];
+
+    // Check if the member being accessed is an array field
+    if (this.isArrayField(memberName)) {
+      const newPath = `${existingPath}.${memberName}`;
+      return `JSON_QUERY(${source}, '${newPath}')`;
+    }
+
+    // Handle nested JSON_QUERY with array indexing
+    const nestedResult = this.handleNestedQueryWithIndex(
+      source,
+      existingPath,
+      memberName,
+    );
+    if (nestedResult) {
+      return nestedResult;
+    }
+
+    // Check if the path already has an array index
     if (existingPath.includes("[") && existingPath.includes("]")) {
       const newPath = `${existingPath}.${memberName}`;
       return `JSON_VALUE(${source}, '${newPath}')`;
     }
 
     const pathParts = existingPath.split(".");
-
     const shouldAddArrayIndex = this.shouldAddArrayIndexForField(
       pathParts,
       existingPath,
@@ -634,10 +677,10 @@ export class FHIRPathToTSqlVisitor
     if (shouldAddArrayIndex) {
       const newPath = `${pathParts[0]}.${pathParts[1]}[0].${memberName}`;
       return `JSON_VALUE(${source}, '${newPath}')`;
-    } else {
-      const newPath = `${existingPath}.${memberName}`;
-      return `JSON_VALUE(${source}, '${newPath}')`;
     }
+
+    const newPath = `${existingPath}.${memberName}`;
+    return `JSON_VALUE(${source}, '${newPath}')`;
   }
 
   private shouldAddArrayIndexForField(
@@ -711,6 +754,11 @@ export class FHIRPathToTSqlVisitor
     // Special handling for getReferenceKey() function - need raw type name, not transpiled
     if (functionName === "getReferenceKey") {
       return this.handleGetReferenceKeyFunctionInvocation(base, functionCtx);
+    }
+
+    // Special handling for exists() function - need raw expression, not transpiled
+    if (functionName === "exists") {
+      return this.handleExistsFunctionInvocation(base, functionCtx);
     }
 
     const args = paramList ? this.getParameterList(paramList) : [];
@@ -977,6 +1025,25 @@ export class FHIRPathToTSqlVisitor
     return `(SELECT TOP 1 value FROM OPENJSON(${source}, '${jsonPath}') AS ${tableAlias} WHERE ${condition})`;
   }
 
+  private handleExistsFunctionInvocation(
+    base: string,
+    functionCtx: FunctionInvocationContext,
+  ): string {
+    const paramList = functionCtx.function().paramList();
+
+    // If no arguments, delegate to the standard handler
+    if (!paramList || paramList.expression().length === 0) {
+      const args: string[] = [];
+      return this.handleExistsFunction(args, base);
+    }
+
+    // Get the raw filter expression context (not transpiled yet)
+    const filterExprCtx = paramList.expression()[0];
+
+    // Call the handler with the base and filter expression context
+    return this.handleExistsFunction([], base, filterExprCtx);
+  }
+
   private handleFirstFunctionInvocation(base: string): string {
     // Check if the base is a JSON_QUERY call for an array
     const queryMatch = /^JSON_QUERY\(([^,]+),\s*'([^']+)'\)$/.exec(base);
@@ -1147,18 +1214,34 @@ export class FHIRPathToTSqlVisitor
   }
 
   // Function handlers (simplified versions of the original implementations)
-  private handleExistsFunction(args: string[]): string {
-    if (args.length === 0) {
-      return this.handleExistsWithoutArgs();
+  private handleExistsFunction(
+    args: string[],
+    base?: string,
+    filterExprCtx?: ExpressionContext,
+  ): string {
+    // If we have a filter expression context, use it (this comes from handleExistsFunctionInvocation)
+    if (filterExprCtx) {
+      return this.handleExistsWithArgs("", base, filterExprCtx);
     }
 
-    return this.handleExistsWithArgs(args[0]);
+    // Otherwise check args
+    if (args.length === 0) {
+      return this.handleExistsWithoutArgs(base);
+    }
+
+    return this.handleExistsWithArgs(args[0], base, filterExprCtx);
   }
 
   /**
-   * Handles exists() function without arguments, using iteration context.
+   * Handles exists() function without arguments, using iteration context or base.
    */
-  private handleExistsWithoutArgs(): string {
+  private handleExistsWithoutArgs(base?: string): string {
+    // If we have a base, check if it's an array (JSON_QUERY)
+    if (base?.includes("JSON_QUERY")) {
+      return `(${base} IS NOT NULL AND ${base} != '[]')`;
+    }
+
+    // Otherwise use iteration context
     if (this.context.iterationContext) {
       const iterCtx = this.context.iterationContext.trim();
 
@@ -1187,14 +1270,45 @@ export class FHIRPathToTSqlVisitor
       return `(${this.context.iterationContext} IS NOT NULL)`;
     }
 
-    // No iteration context - check resource
+    // No iteration context or base - check resource
     return `(${this.context.resourceAlias}.json IS NOT NULL)`;
+  }
+
+  /**
+   * Builds an EXISTS clause with an OPENJSON subquery for filtering a collection.
+   */
+  private buildExistsWithFilter(
+    base: string,
+    filterExprCtx: ExpressionContext,
+  ): string {
+    const { source, jsonPath } = this.extractSourceAndPath(base);
+    const tableAlias = "existsItem";
+
+    const itemContext: TranspilerContext = {
+      resourceAlias: tableAlias,
+      constants: this.context.constants,
+      iterationContext: `${tableAlias}.value`,
+    };
+
+    const filterVisitor = new FHIRPathToTSqlVisitor(itemContext);
+    const condition = filterVisitor.visit(filterExprCtx);
+
+    return `EXISTS (SELECT 1 FROM OPENJSON(${source}, '${jsonPath}') AS ${tableAlias} WHERE ${condition})`;
   }
 
   /**
    * Handles exists() function with an argument expression.
    */
-  private handleExistsWithArgs(arg: string): string {
+  private handleExistsWithArgs(
+    arg: string,
+    base?: string,
+    filterExprCtx?: ExpressionContext,
+  ): string {
+    // If we have a filter expression context and a base, create an OPENJSON subquery
+    if (filterExprCtx && base) {
+      return this.buildExistsWithFilter(base, filterExprCtx);
+    }
+
     const trimmedArg = arg.trim();
 
     // If already an EXISTS clause, return as-is
@@ -1203,7 +1317,6 @@ export class FHIRPathToTSqlVisitor
     }
 
     // If the argument is a SELECT subquery (from .where() function), wrap in EXISTS
-    // Check this BEFORE checking for boolean expression, because SELECT may contain operators
     if (trimmedArg.startsWith("(SELECT")) {
       return `EXISTS ${arg}`;
     }
