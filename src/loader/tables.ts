@@ -33,7 +33,7 @@ export async function tableExists(
 }
 
 /**
- * Create the fhir_resources table.
+ * Create the fhir_resources table with an index on resource_type.
  * Table schema: id (INT IDENTITY PRIMARY KEY), resource_type (NVARCHAR(64)), json (NVARCHAR(MAX))
  *
  * @param pool - Database connection pool.
@@ -45,12 +45,19 @@ export async function createTable(
   schemaName: string,
   tableName: string,
 ): Promise<void> {
+  // Create the table.
   await pool.request().query(`
     CREATE TABLE [${schemaName}].[${tableName}] (
       [id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
       [resource_type] NVARCHAR(64) NOT NULL,
       [json] NVARCHAR(MAX) NOT NULL
     )
+  `);
+
+  // Create an index on resource_type for efficient filtering by resource type.
+  await pool.request().query(`
+    CREATE INDEX [IX_${tableName}_resource_type]
+    ON [${schemaName}].[${tableName}] ([resource_type])
   `);
 }
 

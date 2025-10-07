@@ -224,13 +224,19 @@ CREATE TABLE [dbo].[fhir_resources] (
     [resource_type] NVARCHAR(64) NOT NULL,
     [json] NVARCHAR(MAX) NOT NULL
 );
+
+-- Create an index on resource_type for efficient filtering by resource type
+CREATE INDEX [IX_fhir_resources_resource_type]
+ON [dbo].[fhir_resources] ([resource_type]);
 ```
 
 The generated queries use:
 
-- `resource_type` column for filtering by FHIR resource type
+- `resource_type` column for filtering by FHIR resource type (indexed for performance)
 - `json` column containing the complete FHIR resource as JSON
 - SQL Server's JSON functions (`JSON_VALUE`, `JSON_QUERY`, `OPENJSON`) for data extraction
+
+**Performance recommendation:** The index on `resource_type` is strongly recommended as every ViewDefinition query filters by resource type. Without this index, queries will perform full table scans.
 
 ### Loading data
 
