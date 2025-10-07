@@ -5,7 +5,13 @@
  * @author John Grimes
  */
 
-import type { DiscoveredFile, LoaderOptions, LoaderSummary } from "./types.js";
+import type {
+  DiscoveredFile,
+  LoaderOptions,
+  LoaderProgress,
+  LoaderSummary,
+} from "./types.js";
+import type { ConnectionPool } from "mssql";
 import {
   closeConnectionPool,
   createConnectionPool,
@@ -78,12 +84,147 @@ function chunkFiles(
 }
 
 /**
+ * Prepare database table for loading.
+ *
+ * @param pool - Database connection pool.
+ * @param options - Loader options.
+ * @returns Table schema and name.
+ */
+async function prepareTable(
+  pool: ConnectionPool,
+  options: LoaderOptions,
+): Promise<{ schemaName: string; tableName: string }> {
+  const schemaName = options.schemaName ?? "dbo";
+  const tableName = options.tableName ?? "fhir_resources";
+
+  if (options.createTable !== false) {
+    if (options.verbose) {
+      console.log(
+        `Ensuring table [${schemaName}].[${tableName}] exists${options.truncate ? " (will truncate)" : ""}...`,
+      );
+    }
+    await ensureTable(pool, schemaName, tableName, options.truncate ?? false);
+  }
+
+  return { schemaName, tableName };
+}
+
+/**
+ * Load files in parallel chunks.
+ *
+ * @param pool - Database connection pool.
+ * @param files - Files to load.
+ * @param options - Loader options.
+ * @param schemaName - Schema name.
+ * @param tableName - Table name.
+ * @param progress - Progress tracker.
+ */
+async function loadFilesInChunks(
+  pool: ConnectionPool,
+  files: DiscoveredFile[],
+  options: LoaderOptions,
+  schemaName: string,
+  tableName: string,
+  progress: LoaderProgress,
+): Promise<void> {
+  const parallel = options.parallel ?? 4;
+  const continueOnError = options.continueOnError ?? false;
+  const fileChunks = chunkFiles(files, parallel);
+
+  for (const chunk of fileChunks) {
+    const loadPromises = chunk.map(async (file) => {
+      initializeFileProgress(progress, file);
+
+      const result = await loadFile(
+        pool,
+        file,
+        schemaName,
+        tableName,
+        options.batchSize ?? 1000,
+        (rowsLoaded) => {
+          updateFileProgress(progress, file.path, rowsLoaded);
+          if (options.progress && !options.verbose) {
+            printSimpleProgress(progress);
+          }
+        },
+      );
+
+      completeFileProgress(progress, result);
+
+      if (options.verbose) {
+        printVerboseProgress(progress);
+      }
+
+      if (result.error && !continueOnError) {
+        throw new Error(`Failed to load ${file.path}: ${result.error}`);
+      }
+
+      return result;
+    });
+
+    await Promise.all(loadPromises);
+  }
+}
+
+/**
+ * Perform the actual loading process.
+ *
+ * @param pool - Database connection pool.
+ * @param files - Files to load.
+ * @param options - Loader options.
+ * @param startTime - Start timestamp.
+ * @returns Loader summary.
+ */
+async function performLoad(
+  pool: ConnectionPool,
+  files: DiscoveredFile[],
+  options: LoaderOptions,
+  startTime: number,
+): Promise<LoaderSummary> {
+  const connected = await testConnection(pool);
+  if (!connected) {
+    throw new Error("Failed to connect to database");
+  }
+
+  if (!options.quiet) {
+    console.log("Connected successfully\n");
+  }
+
+  const progress = createProgressTracker(files);
+  const { schemaName, tableName } = await prepareTable(pool, options);
+
+  if (!options.quiet) {
+    console.log("Loading files...\n");
+  }
+
+  await loadFilesInChunks(
+    pool,
+    files,
+    options,
+    schemaName,
+    tableName,
+    progress,
+  );
+
+  if (options.progress && !options.verbose && !options.quiet) {
+    process.stdout.write("\r" + " ".repeat(80) + "\r");
+  }
+
+  const summary = createSummary(progress, Date.now() - startTime);
+
+  if (!options.quiet) {
+    printSummary(summary);
+  }
+
+  return summary;
+}
+
+/**
  * Load NDJSON files from a directory into SQL Server.
  *
  * @param options - Loader options.
  * @returns Promise that resolves to the loader summary.
  */
-// eslint-disable-next-line max-lines-per-function -- Main orchestration function
 export async function loadNdjsonFiles(
   options: LoaderOptions,
 ): Promise<LoaderSummary> {
@@ -111,81 +252,7 @@ export async function loadNdjsonFiles(
   const pool = await createConnectionPool(options.database);
 
   try {
-    const connected = await testConnection(pool);
-    if (!connected) {
-      throw new Error("Failed to connect to database");
-    }
-
-    if (!options.quiet) {
-      console.log("Connected successfully\n");
-    }
-
-    const progress = createProgressTracker(files);
-    const schemaName = options.schemaName ?? "dbo";
-    const tableName = options.tableName ?? "fhir_resources";
-
-    if (options.createTable !== false) {
-      if (options.verbose) {
-        console.log(
-          `Ensuring table [${schemaName}].[${tableName}] exists${options.truncate ? " (will truncate)" : ""}...`,
-        );
-      }
-      await ensureTable(pool, schemaName, tableName, options.truncate ?? false);
-    }
-
-    if (!options.quiet) {
-      console.log("Loading files...\n");
-    }
-
-    const parallel = options.parallel ?? 4;
-    const continueOnError = options.continueOnError ?? false;
-    const fileChunks = chunkFiles(files, parallel);
-
-    for (const chunk of fileChunks) {
-      const loadPromises = chunk.map(async (file) => {
-        initializeFileProgress(progress, file);
-
-        const result = await loadFile(
-          pool,
-          file,
-          schemaName,
-          tableName,
-          options.batchSize ?? 1000,
-          (rowsLoaded) => {
-            updateFileProgress(progress, file.path, rowsLoaded);
-            if (options.progress && !options.verbose) {
-              printSimpleProgress(progress);
-            }
-          },
-        );
-
-        completeFileProgress(progress, result);
-
-        if (options.verbose) {
-          printVerboseProgress(progress);
-        }
-
-        if (result.error && !continueOnError) {
-          throw new Error(`Failed to load ${file.path}: ${result.error}`);
-        }
-
-        return result;
-      });
-
-      await Promise.all(loadPromises);
-    }
-
-    if (options.progress && !options.verbose && !options.quiet) {
-      process.stdout.write("\r" + " ".repeat(80) + "\r");
-    }
-
-    const summary = createSummary(progress, Date.now() - startTime);
-
-    if (!options.quiet) {
-      printSummary(summary);
-    }
-
-    return summary;
+    return await performLoad(pool, files, options, startTime);
   } finally {
     await closeConnectionPool(pool);
   }

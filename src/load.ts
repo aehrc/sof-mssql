@@ -11,11 +11,102 @@ import { getDatabaseConfigFromEnv, loadNdjsonFiles } from "./loader/index.js";
 import type { LoaderOptions } from "./loader/types.js";
 
 /**
+ * Get database configuration for dry-run mode.
+ *
+ * @param commandOptions - Command options.
+ * @returns Database configuration with dummy values.
+ */
+function getDryRunDatabaseConfig(commandOptions: Record<string, unknown>): {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  database: string;
+  trustServerCertificate: boolean | undefined;
+} {
+  return {
+    host: (commandOptions.host as string | undefined) ?? "localhost",
+    port: (commandOptions.port as number | undefined) ?? 1433,
+    user: (commandOptions.user as string | undefined) ?? "sa",
+    password: (commandOptions.password as string | undefined) ?? "dummy",
+    database: (commandOptions.database as string | undefined) ?? "dummy",
+    trustServerCertificate: commandOptions.trustServerCertificate as
+      | boolean
+      | undefined,
+  };
+}
+
+/**
+ * Build loader options from command options.
+ *
+ * @param directory - Directory to load from.
+ * @param commandOptions - Command options.
+ * @returns Loader options.
+ */
+function buildLoaderOptions(
+  directory: string,
+  commandOptions: Record<string, unknown>,
+): LoaderOptions {
+  const database = commandOptions.dryRun
+    ? getDryRunDatabaseConfig(commandOptions)
+    : getDatabaseConfigFromEnv({
+        host: commandOptions.host as string | undefined,
+        port: commandOptions.port as number | undefined,
+        user: commandOptions.user as string | undefined,
+        password: commandOptions.password as string | undefined,
+        database: commandOptions.database as string | undefined,
+        trustServerCertificate: commandOptions.trustServerCertificate as
+          | boolean
+          | undefined,
+      });
+
+  return {
+    directory,
+    database,
+    pattern: commandOptions.pattern as string | undefined,
+    resourceType: commandOptions.resourceType as string | undefined,
+    tableName: commandOptions.tableName as string | undefined,
+    schemaName: commandOptions.schemaName as string | undefined,
+    createTable: commandOptions.createTable as boolean | undefined,
+    truncate: commandOptions.truncate as boolean | undefined,
+    batchSize: commandOptions.batchSize as number | undefined,
+    parallel: commandOptions.parallel as number | undefined,
+    continueOnError: commandOptions.continueOnError as boolean | undefined,
+    dryRun: commandOptions.dryRun as boolean | undefined,
+    verbose: commandOptions.verbose as boolean | undefined,
+    quiet: commandOptions.quiet as boolean | undefined,
+    progress: commandOptions.progress as boolean | undefined,
+  };
+}
+
+/**
+ * Handle the load command action.
+ *
+ * @param directory - Directory to load from.
+ * @param commandOptions - Command options.
+ */
+async function handleLoadCommand(
+  directory: string,
+  commandOptions: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const options = buildLoaderOptions(directory, commandOptions);
+    const summary = await loadNdjsonFiles(options);
+
+    if (summary.filesFailed > 0) {
+      process.exit(1);
+    }
+  } catch (err) {
+    console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+}
+
+/**
  * Create the load command.
  *
  * @returns Commander command for loading NDJSON files.
  */
-// eslint-disable-next-line max-lines-per-function -- CLI command setup requires many options
 export function createLoadCommand(): Command {
   const command = new Command("load");
 
@@ -53,71 +144,7 @@ export function createLoadCommand(): Command {
     .option("--verbose", "Enable verbose logging", false)
     .option("--quiet", "Minimal output", false)
     .option("--progress", "Show progress bar", false)
-    // eslint-disable-next-line max-lines-per-function -- Action handler needs to process all options
-    .action(
-      async (directory: string, commandOptions: Record<string, unknown>) => {
-        try {
-          // For dry-run mode, we don't need a real database connection.
-          // Use dummy values if none provided.
-          const database = commandOptions.dryRun
-            ? {
-                host:
-                  (commandOptions.host as string | undefined) ?? "localhost",
-                port: (commandOptions.port as number | undefined) ?? 1433,
-                user: (commandOptions.user as string | undefined) ?? "sa",
-                password:
-                  (commandOptions.password as string | undefined) ?? "dummy",
-                database:
-                  (commandOptions.database as string | undefined) ?? "dummy",
-                trustServerCertificate:
-                  commandOptions.trustServerCertificate as boolean | undefined,
-              }
-            : getDatabaseConfigFromEnv({
-                host: commandOptions.host as string | undefined,
-                port: commandOptions.port as number | undefined,
-                user: commandOptions.user as string | undefined,
-                password: commandOptions.password as string | undefined,
-                database: commandOptions.database as string | undefined,
-                trustServerCertificate:
-                  commandOptions.trustServerCertificate as boolean | undefined,
-              });
-
-          // Build loader options.
-          const options: LoaderOptions = {
-            directory,
-            database,
-            pattern: commandOptions.pattern as string | undefined,
-            resourceType: commandOptions.resourceType as string | undefined,
-            tableName: commandOptions.tableName as string | undefined,
-            schemaName: commandOptions.schemaName as string | undefined,
-            createTable: commandOptions.createTable as boolean | undefined,
-            truncate: commandOptions.truncate as boolean | undefined,
-            batchSize: commandOptions.batchSize as number | undefined,
-            parallel: commandOptions.parallel as number | undefined,
-            continueOnError: commandOptions.continueOnError as
-              | boolean
-              | undefined,
-            dryRun: commandOptions.dryRun as boolean | undefined,
-            verbose: commandOptions.verbose as boolean | undefined,
-            quiet: commandOptions.quiet as boolean | undefined,
-            progress: commandOptions.progress as boolean | undefined,
-          };
-
-          // Load the files.
-          const summary = await loadNdjsonFiles(options);
-
-          // Exit with error code if any files failed.
-          if (summary.filesFailed > 0) {
-            process.exit(1);
-          }
-        } catch (err) {
-          console.error(
-            `Error: ${err instanceof Error ? err.message : String(err)}`,
-          );
-          process.exit(1);
-        }
-      },
-    );
+    .action(handleLoadCommand);
 
   return command;
 }
