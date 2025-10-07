@@ -1413,7 +1413,7 @@ export class FHIRPathToTSqlVisitor
 
       // If a resource type is specified, only return the reference if it matches
       if (resourceType) {
-        return `CASE WHEN LEFT(${referenceExpr}, ${resourceType.length + 1}) = '${resourceType}/' THEN ${referenceExpr} ELSE NULL END`;
+        return `IIF(LEFT(${referenceExpr}, ${resourceType.length + 1}) = '${resourceType}/', ${referenceExpr}, NULL)`;
       }
 
       return referenceExpr;
