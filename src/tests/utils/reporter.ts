@@ -177,7 +177,7 @@ class SqlOnFhirReporter implements Reporter {
 
   /**
    * Collect test results from Vitest task results as fallback.
-   * Only collects from SQL on FHIR compliance tests.
+   * Groups tests by their source file (e.g., "basic.json", "collection.json").
    */
   private collectFromVitestTasks(files: RunnerTestFile[]): void {
     for (const file of files) {
@@ -188,27 +188,50 @@ class SqlOnFhirReporter implements Reporter {
           task.type === "suite" &&
           task.name === "SQL on FHIR compliance tests"
         ) {
-          const suiteName = task.name;
-          const suiteTests = this.collectTestsFromSuite(task);
-
-          if (suiteTests.length > 0) {
-            this.testReport[suiteName] = {
-              tests: suiteTests,
-            };
-          }
+          this.collectTestsFromParentSuite(task);
         }
       }
     }
   }
 
   /**
-   * Recursively collect test results from a test suite.
+   * Collect tests from the parent "SQL on FHIR compliance tests" suite.
+   * Processes child suites and groups tests by filename.
+   */
+  private collectTestsFromParentSuite(parentSuite: RunnerTask): void {
+    if (!("tasks" in parentSuite) || !parentSuite.tasks) return;
+
+    // The parent suite contains child suites for each test file
+    // (e.g., "basic", "collection", "foreach")
+    for (const childSuite of parentSuite.tasks) {
+      if (childSuite.type !== "suite") continue;
+
+      // Derive filename from suite name (e.g., "basic" → "basic.json")
+      const fileName = `${childSuite.name}.json`;
+      const suiteTests = this.collectTestsFromSuite(childSuite, false);
+
+      if (suiteTests.length > 0) {
+        this.testReport[fileName] = {
+          tests: suiteTests,
+        };
+      }
+    }
+  }
+
+  /**
+   * Collect test results from a test suite.
    *
    * Note: This is a fallback mechanism. The primary test result collection
    * happens in the DynamicVitestGenerator which stores results in global.testResults.
    * This method extracts the plain test title from the formatted test name.
+   *
+   * @param suite The test suite to collect from
+   * @param recursive Whether to recursively collect from nested suites
    */
-  private collectTestsFromSuite(suite: RunnerTask): TestReportEntry[] {
+  private collectTestsFromSuite(
+    suite: RunnerTask,
+    recursive = true,
+  ): TestReportEntry[] {
     const tests: TestReportEntry[] = [];
 
     if ("tasks" in suite && suite.tasks) {
@@ -222,9 +245,9 @@ class SqlOnFhirReporter implements Reporter {
               passed: task.result?.state === "pass",
             },
           });
-        } else if (task.type === "suite") {
-          // Recursively collect from nested suites
-          tests.push(...this.collectTestsFromSuite(task));
+        } else if (task.type === "suite" && recursive) {
+          // Recursively collect from nested suites only if recursive is true
+          tests.push(...this.collectTestsFromSuite(task, recursive));
         }
       }
     }
