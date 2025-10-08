@@ -37,6 +37,19 @@
     "tsql",
     "healthcare"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aehrc/sof-mssql.git"
+  },
+  "homepage": "https://github.com/aehrc/sof-mssql#readme",
+  "bugs": {
+    "url": "https://github.com/aehrc/sof-mssql/issues"
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
   "license": "Apache-2.0",
   "dependencies": {
     "antlr4ts": "^0.5.0-alpha.4",
