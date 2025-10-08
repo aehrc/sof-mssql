@@ -1,4 +1,4 @@
-# SQL on FHIR views for Microsoft SQL Server
+# 🔥 MSSQL on FHIR 🔥
 
 A TypeScript library and CLI tool for loading FHIR into Microsoft SQL Server,
 and transpiling [SQL on FHIR](https://sql-on-fhir.org/) view definitions into
