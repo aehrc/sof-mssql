@@ -37,7 +37,7 @@
     "tsql",
     "healthcare"
   ],
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "dependencies": {
     "antlr4ts": "^0.5.0-alpha.4",
     "commander": "^14.0.1",
