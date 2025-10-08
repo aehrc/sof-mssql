@@ -40,7 +40,10 @@ export class DynamicVitestGenerator {
     const testSuite = ViewDefinitionParser.parseTestSuite(testSuiteJson);
     const suiteName = testSuite.title;
 
-    this.generateTestSuite(testSuite, suiteName);
+    // Extract filename for report (e.g., "basic.json" from "/path/to/basic.json")
+    const fileName = filePath.split("/").pop() ?? filePath;
+
+    this.generateTestSuite(testSuite, suiteName, fileName);
   }
 
   /**
@@ -49,6 +52,7 @@ export class DynamicVitestGenerator {
   generateTestsFromDirectory(directoryPath: string): void {
     const files = readdirSync(directoryPath)
       .filter((file) => file.endsWith(".json"))
+      .sort() // Sort to ensure consistent ordering
       .map((file) => join(directoryPath, file));
 
     for (const filePath of files) {
@@ -58,8 +62,16 @@ export class DynamicVitestGenerator {
 
   /**
    * Generate a Vitest test suite for a SQL-on-FHIR test definition.
+   *
+   * @param testSuite The test suite definition
+   * @param suiteName The display name for Vitest (e.g., "basic")
+   * @param reportFileName The filename for the test report (e.g., "basic.json")
    */
-  private generateTestSuite(testSuite: TestSuite, suiteName: string): void {
+  private generateTestSuite(
+    testSuite: TestSuite,
+    suiteName: string,
+    reportFileName: string,
+  ): void {
     const suiteResults: TestReportEntry[] = [];
 
     describe(suiteName, () => {
@@ -70,10 +82,10 @@ export class DynamicVitestGenerator {
       afterAll(async () => {
         await cleanupDatabase();
 
-        // Store results for report generation
+        // Store results for report generation using the filename as the key
         if (typeof global !== "undefined") {
           global.testResults = global.testResults ?? {};
-          global.testResults[suiteName] = { tests: suiteResults };
+          global.testResults[reportFileName] = { tests: suiteResults };
         }
       });
 
@@ -131,11 +143,18 @@ export class DynamicVitestGenerator {
         await executeViewDefinition(testCase.view, testId);
 
         // If we get here, the test should have failed but didn't
-        suiteResults.push({ name: testName, result: { passed: false } });
-        expect.fail("Expected an error but the test passed");
+        const errorMessage = "Expected an error but the test passed";
+        suiteResults.push({
+          name: testCase.title, // Use plain title for report
+          result: { passed: false, error: errorMessage },
+        });
+        expect.fail(errorMessage);
       } catch {
         // Test passed - we expected an error
-        suiteResults.push({ name: testName, result: { passed: true } });
+        suiteResults.push({
+          name: testCase.title, // Use plain title for report
+          result: { passed: true },
+        });
       } finally {
         await cleanupTestData(testId);
       }
@@ -163,17 +182,28 @@ export class DynamicVitestGenerator {
           result.columns,
         );
 
-        suiteResults.push({ name: testName, result: { passed } });
-
         if (!passed) {
-          expect.fail(
-            `Results don't match. Expected: ${JSON.stringify(testCase.expect)}, Actual: ${JSON.stringify(result.results)}`,
-          );
+          const errorMessage = `Results don't match. Expected: ${JSON.stringify(testCase.expect)}, Actual: ${JSON.stringify(result.results)}`;
+          suiteResults.push({
+            name: testCase.title, // Use plain title for report
+            result: { passed: false, error: errorMessage },
+          });
+          expect.fail(errorMessage);
+        } else {
+          suiteResults.push({
+            name: testCase.title, // Use plain title for report
+            result: { passed: true },
+          });
         }
 
         expect(passed).toBe(true);
       } catch (error) {
-        suiteResults.push({ name: testName, result: { passed: false } });
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        suiteResults.push({
+          name: testCase.title, // Use plain title for report
+          result: { passed: false, error: errorMessage },
+        });
         throw error;
       } finally {
         await cleanupTestData(testId);

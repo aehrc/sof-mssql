@@ -203,6 +203,10 @@ class SqlOnFhirReporter implements Reporter {
 
   /**
    * Recursively collect test results from a test suite.
+   *
+   * Note: This is a fallback mechanism. The primary test result collection
+   * happens in the DynamicVitestGenerator which stores results in global.testResults.
+   * This method extracts the plain test title from the formatted test name.
    */
   private collectTestsFromSuite(suite: RunnerTask): TestReportEntry[] {
     const tests: TestReportEntry[] = [];
@@ -210,8 +214,10 @@ class SqlOnFhirReporter implements Reporter {
     if ("tasks" in suite && suite.tasks) {
       for (const task of suite.tasks) {
         if (task.type === "test") {
+          // Extract plain title from formatted name: "(suite) title #tag" -> "title"
+          const plainTitle = this.extractPlainTitle(task.name);
           tests.push({
-            name: task.name,
+            name: plainTitle,
             result: {
               passed: task.result?.state === "pass",
             },
@@ -224,6 +230,19 @@ class SqlOnFhirReporter implements Reporter {
     }
 
     return tests;
+  }
+
+  /**
+   * Extract the plain test title from a formatted test name.
+   * Formatted: "(suite) title #tag1 #tag2"
+   * Plain: "title"
+   */
+  private extractPlainTitle(formattedName: string): string {
+    // Remove suite prefix: "(suite) " -> ""
+    let title = formattedName.replace(/^\([^)]+\)\s+/, "");
+    // Remove tags: " #tag1 #tag2" -> ""
+    title = title.replace(/\s+#\S+/g, "");
+    return title.trim();
   }
 
   /**
