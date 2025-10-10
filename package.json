@@ -22,7 +22,6 @@
     "cli:load": "tsx src/cli.ts load",
     "cli:transpile": "tsx src/cli.ts transpile",
     "test": "vitest run",
-    "test:ci": "vitest run --testNamePattern '^(?!.*#experimental)'",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "coverage": "vitest run --coverage",
