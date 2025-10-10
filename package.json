@@ -1,6 +1,6 @@
 {
   "name": "sof-mssql",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A SQL on FHIR view runner that transpiles view definitions into T-SQL queries for MS SQL Server",
   "author": "Australian e-Health Research Centre, CSIRO",
   "contributors": [
