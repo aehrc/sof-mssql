@@ -4,21 +4,16 @@
  * Provides unique test IDs for database isolation during concurrent test runs.
  */
 
-import { randomUUID } from "crypto";
-
-let testIdCounter = 0;
+import { randomUUID } from "node:crypto";
 
 /**
  * Generate a unique test ID for database isolation.
  *
- * The test ID is composed of:
- * - Process ID (to handle multi-process execution)
- * - Timestamp (for temporal uniqueness)
- * - Counter (for uniqueness within same millisecond)
- * - UUID (for guaranteed uniqueness)
+ * Uses a cryptographically secure V4 UUID which guarantees global uniqueness
+ * across processes, machines, and time.
  *
- * @returns Unique test identifier
+ * @returns Unique test identifier (V4 UUID)
  */
 export function generateTestId(): string {
-  return `test_${process.pid}_${Date.now()}_${testIdCounter++}_${randomUUID()}`;
+  return randomUUID();
 }

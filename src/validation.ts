@@ -1,6 +1,161 @@
 /**
- * SQL Server identifier validation utilities.
+ * SQL Server identifier and FHIR resource type validation utilities.
  */
+
+/**
+ * FHIR R4 resource types.
+ * Complete list of all resource types defined in FHIR R4 specification.
+ */
+const FHIR_R4_RESOURCE_TYPES = new Set([
+  "Account",
+  "ActivityDefinition",
+  "AdverseEvent",
+  "AllergyIntolerance",
+  "Appointment",
+  "AppointmentResponse",
+  "AuditEvent",
+  "Basic",
+  "Binary",
+  "BiologicallyDerivedProduct",
+  "BodyStructure",
+  "Bundle",
+  "CapabilityStatement",
+  "CarePlan",
+  "CareTeam",
+  "CatalogEntry",
+  "ChargeItem",
+  "ChargeItemDefinition",
+  "Claim",
+  "ClaimResponse",
+  "ClinicalImpression",
+  "CodeSystem",
+  "Communication",
+  "CommunicationRequest",
+  "CompartmentDefinition",
+  "Composition",
+  "ConceptMap",
+  "Condition",
+  "Consent",
+  "Contract",
+  "Coverage",
+  "CoverageEligibilityRequest",
+  "CoverageEligibilityResponse",
+  "DetectedIssue",
+  "Device",
+  "DeviceDefinition",
+  "DeviceMetric",
+  "DeviceRequest",
+  "DeviceUseStatement",
+  "DiagnosticReport",
+  "DocumentManifest",
+  "DocumentReference",
+  "DomainResource",
+  "EffectEvidenceSynthesis",
+  "Encounter",
+  "Endpoint",
+  "EnrollmentRequest",
+  "EnrollmentResponse",
+  "EpisodeOfCare",
+  "EventDefinition",
+  "Evidence",
+  "EvidenceVariable",
+  "ExampleScenario",
+  "ExplanationOfBenefit",
+  "FamilyMemberHistory",
+  "Flag",
+  "Goal",
+  "GraphDefinition",
+  "Group",
+  "GuidanceResponse",
+  "HealthcareService",
+  "ImagingStudy",
+  "Immunization",
+  "ImmunizationEvaluation",
+  "ImmunizationRecommendation",
+  "ImplementationGuide",
+  "InsurancePlan",
+  "Invoice",
+  "Library",
+  "Linkage",
+  "List",
+  "Location",
+  "Measure",
+  "MeasureReport",
+  "Media",
+  "Medication",
+  "MedicationAdministration",
+  "MedicationDispense",
+  "MedicationKnowledge",
+  "MedicationRequest",
+  "MedicationStatement",
+  "MedicinalProduct",
+  "MedicinalProductAuthorization",
+  "MedicinalProductContraindication",
+  "MedicinalProductIndication",
+  "MedicinalProductIngredient",
+  "MedicinalProductInteraction",
+  "MedicinalProductManufactured",
+  "MedicinalProductPackaged",
+  "MedicinalProductPharmaceutical",
+  "MedicinalProductUndesirableEffect",
+  "MessageDefinition",
+  "MessageHeader",
+  "MolecularSequence",
+  "NamingSystem",
+  "NutritionOrder",
+  "Observation",
+  "ObservationDefinition",
+  "OperationDefinition",
+  "OperationOutcome",
+  "Organization",
+  "OrganizationAffiliation",
+  "Parameters",
+  "Patient",
+  "PaymentNotice",
+  "PaymentReconciliation",
+  "Person",
+  "PlanDefinition",
+  "Practitioner",
+  "PractitionerRole",
+  "Procedure",
+  "Provenance",
+  "Questionnaire",
+  "QuestionnaireResponse",
+  "RelatedPerson",
+  "RequestGroup",
+  "ResearchDefinition",
+  "ResearchElementDefinition",
+  "ResearchStudy",
+  "ResearchSubject",
+  "Resource",
+  "RiskAssessment",
+  "RiskEvidenceSynthesis",
+  "Schedule",
+  "SearchParameter",
+  "ServiceRequest",
+  "Slot",
+  "Specimen",
+  "SpecimenDefinition",
+  "StructureDefinition",
+  "StructureMap",
+  "Subscription",
+  "Substance",
+  "SubstanceNucleicAcid",
+  "SubstancePolymer",
+  "SubstanceProtein",
+  "SubstanceReferenceInformation",
+  "SubstanceSourceMaterial",
+  "SubstanceSpecification",
+  "SupplyDelivery",
+  "SupplyRequest",
+  "Task",
+  "TerminologyCapabilities",
+  "TestReport",
+  "TestScript",
+  "ValueSet",
+  "VerificationResult",
+  "VisionPrescription",
+]);
 
 /**
  * SQL Server reserved words that cannot be used as identifiers without quoting.
@@ -87,6 +242,48 @@ export function validateSqlServerIdentifier(
   if (SQL_SERVER_RESERVED_WORDS.has(identifier.toUpperCase())) {
     throw new Error(
       `${type} '${identifier}' is a SQL Server reserved word and cannot be used as an identifier.`,
+    );
+  }
+}
+
+/**
+ * Validate a FHIR resource type against the R4 specification.
+ *
+ * @param resourceType - The resource type to validate
+ * @throws Error if the resource type is not valid
+ */
+export function validateResourceType(resourceType: string): void {
+  if (!resourceType || resourceType.trim().length === 0) {
+    throw new Error("Resource type cannot be empty.");
+  }
+
+  if (!FHIR_R4_RESOURCE_TYPES.has(resourceType)) {
+    throw new Error(
+      `Invalid FHIR resource type: '${resourceType}'. Must be a valid FHIR R4 resource type.`,
+    );
+  }
+}
+
+/**
+ * Validate a test ID format.
+ * Test IDs must be valid UUIDs (version 4).
+ *
+ * @param testId - The test ID to validate
+ * @throws Error if the test ID format is invalid
+ */
+export function validateTestId(testId: string): void {
+  if (!testId || testId.trim().length === 0) {
+    throw new Error("Test ID cannot be empty.");
+  }
+
+  // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+  // where x is any hexadecimal digit and y is one of 8, 9, a, or b
+  const uuidV4Pattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  if (!uuidV4Pattern.test(testId)) {
+    throw new Error(
+      `Invalid test ID format: '${testId}'. Must be a valid UUID v4.`,
     );
   }
 }

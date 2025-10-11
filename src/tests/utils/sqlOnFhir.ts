@@ -55,20 +55,12 @@ export async function executeViewDefinition(
       testId,
     );
     const sql = transpilationResult.sql;
-    const parameters = transpilationResult.parameters;
 
     // Log the generated SQL for debugging
     console.log("Generated SQL:", sql);
-    console.log("Parameters:", parameters);
 
-    // Execute the query with parameterized values
+    // Execute the query
     const request = new Request(pool);
-
-    // Bind parameters to prevent SQL injection
-    for (const [name, value] of Object.entries(parameters)) {
-      request.input(name, value);
-    }
-
     const queryResult = await request.query(sql);
 
     // Extract column names from the query result metadata

@@ -52,7 +52,7 @@ export class DynamicVitestGenerator {
   generateTestsFromDirectory(directoryPath: string): void {
     const files = readdirSync(directoryPath)
       .filter((file) => file.endsWith(".json"))
-      .sort() // Sort to ensure consistent ordering
+      .sort((a, b) => a.localeCompare(b)) // Sort alphabetically to ensure consistent ordering
       .map((file) => join(directoryPath, file));
 
     for (const filePath of files) {
@@ -83,9 +83,9 @@ export class DynamicVitestGenerator {
         await cleanupDatabase();
 
         // Store results for report generation using the filename as the key
-        if (typeof global !== "undefined") {
-          global.testResults = global.testResults ?? {};
-          global.testResults[reportFileName] = { tests: suiteResults };
+        if (typeof globalThis !== "undefined") {
+          globalThis.testResults = globalThis.testResults ?? {};
+          globalThis.testResults[reportFileName] = { tests: suiteResults };
         }
       });
 
@@ -182,18 +182,18 @@ export class DynamicVitestGenerator {
           result.columns,
         );
 
-        if (!passed) {
+        if (passed) {
+          suiteResults.push({
+            name: testCase.title, // Use plain title for report
+            result: { passed: true },
+          });
+        } else {
           const errorMessage = `Results don't match. Expected: ${JSON.stringify(testCase.expect)}, Actual: ${JSON.stringify(result.results)}`;
           suiteResults.push({
             name: testCase.title, // Use plain title for report
             result: { passed: false, error: errorMessage },
           });
           expect.fail(errorMessage);
-        } else {
-          suiteResults.push({
-            name: testCase.title, // Use plain title for report
-            result: { passed: true },
-          });
         }
 
         expect(passed).toBe(true);
@@ -215,8 +215,8 @@ export class DynamicVitestGenerator {
    * Clear test results.
    */
   clearTestResults(): void {
-    if (typeof global !== "undefined") {
-      global.testResults = {};
+    if (typeof globalThis !== "undefined") {
+      globalThis.testResults = {};
     }
   }
 }

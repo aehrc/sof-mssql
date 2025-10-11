@@ -279,17 +279,11 @@ export interface TestSuite {
 }
 
 /**
- * Map of parameter names to their values for prepared statements.
- */
-export type ParameterMap = Record<string, string | number | boolean | null>;
-
-/**
- * Transpilation result containing the generated T-SQL query and parameters.
+ * Transpilation result containing the generated T-SQL query.
  */
 export interface TranspilationResult {
   sql: string;
   columns: ColumnInfo[];
-  parameters: ParameterMap;
 }
 
 export interface ColumnInfo {

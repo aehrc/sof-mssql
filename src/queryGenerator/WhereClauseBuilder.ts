@@ -3,15 +3,8 @@
  */
 
 import { Transpiler, TranspilerContext } from "../fhirpath/transpiler.js";
-import { ParameterMap, ViewDefinitionWhere } from "../types.js";
-
-/**
- * Result of building a WHERE clause with parameters.
- */
-export interface WhereClauseResult {
-  sql: string | null;
-  parameters: ParameterMap;
-}
+import { ViewDefinitionWhere } from "../types.js";
+import { validateResourceType, validateTestId } from "../validation.js";
 
 /**
  * Handles generation of WHERE clauses.
@@ -20,7 +13,7 @@ export class WhereClauseBuilder {
   /**
    * Build complete WHERE clause combining resource type filter and view-level filters.
    * For test execution, testId is used to filter test data in the test table.
-   * Uses parameterized queries to prevent SQL injection.
+   * Validates inputs to prevent SQL injection.
    */
   buildWhereClause(
     resourceType: string,
@@ -28,18 +21,17 @@ export class WhereClauseBuilder {
     testId: string | undefined,
     whereConditions: ViewDefinitionWhere[] | undefined,
     context: TranspilerContext,
-  ): WhereClauseResult {
+  ): string | null {
     const conditions: string[] = [];
-    const parameters: ParameterMap = {};
 
-    // Add resource type filter using parameter.
-    conditions.push(`[${resourceAlias}].[resource_type] = @resourceType`);
-    parameters.resourceType = resourceType;
+    // Validate and add resource type filter.
+    validateResourceType(resourceType);
+    conditions.push(`[${resourceAlias}].[resource_type] = '${resourceType}'`);
 
-    // Add test_id filter for test isolation (only used in test table which has test_id column).
+    // Validate and add test_id filter for test isolation (only used in test table which has test_id column).
     if (testId) {
-      conditions.push(`[${resourceAlias}].[test_id] = @testId`);
-      parameters.testId = testId;
+      validateTestId(testId);
+      conditions.push(`[${resourceAlias}].[test_id] = '${testId}'`);
     }
 
     // Add view-level WHERE conditions.
@@ -52,13 +44,10 @@ export class WhereClauseBuilder {
     }
 
     if (conditions.length === 0) {
-      return { sql: null, parameters };
+      return null;
     }
 
-    return {
-      sql: `WHERE ${conditions.join(" AND ")}`,
-      parameters,
-    };
+    return `WHERE ${conditions.join(" AND ")}`;
   }
 
   /**
