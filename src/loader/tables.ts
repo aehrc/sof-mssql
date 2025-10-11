@@ -6,6 +6,7 @@
  */
 
 import sql, { type ConnectionPool } from "mssql";
+import { validateSqlServerIdentifier } from "../validation.js";
 
 /**
  * Check if a table exists in the database.
@@ -45,6 +46,10 @@ export async function createTable(
   schemaName: string,
   tableName: string,
 ): Promise<void> {
+  // Validate identifiers to prevent SQL injection
+  validateSqlServerIdentifier(schemaName, "Schema name");
+  validateSqlServerIdentifier(tableName, "Table name");
+
   // Create the table.
   await pool.request().query(`
     CREATE TABLE [${schemaName}].[${tableName}] (
@@ -73,6 +78,10 @@ export async function truncateTable(
   schemaName: string,
   tableName: string,
 ): Promise<void> {
+  // Validate identifiers to prevent SQL injection
+  validateSqlServerIdentifier(schemaName, "Schema name");
+  validateSqlServerIdentifier(tableName, "Table name");
+
   await pool.request().query(`TRUNCATE TABLE [${schemaName}].[${tableName}]`);
 }
 

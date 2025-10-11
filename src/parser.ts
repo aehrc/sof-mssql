@@ -70,7 +70,36 @@ export class ViewDefinitionParser {
       }
     }
 
+    // Validate constants if present
+    if (data.constant) {
+      this.validateConstants(data.constant);
+    }
+
     return true;
+  }
+
+  /**
+   * Validate constant names match SQL on FHIR specification.
+   */
+  private static validateConstants(constants: unknown[]): void {
+    for (const constant of constants) {
+      if (
+        !constant ||
+        typeof constant !== "object" ||
+        !("name" in constant) ||
+        typeof constant.name !== "string"
+      ) {
+        throw new Error("Constant must have a valid name.");
+      }
+
+      // Validate constant name matches SQL on FHIR specification pattern
+      // Pattern: must start with a letter, followed by letters, digits, or underscores
+      if (!/^[A-Za-z]\w*$/.test(constant.name)) {
+        throw new Error(
+          `Constant name '${constant.name}' does not match SQL on FHIR specification. Must start with a letter, followed by letters, digits, or underscores.`,
+        );
+      }
+    }
   }
 
   /**
@@ -171,10 +200,11 @@ export class ViewDefinitionParser {
       throw new Error("Column must have a valid FHIRPath expression.");
     }
 
-    // Validate column name is database-friendly
-    if (!/^[a-zA-Z_]\w*$/.test(column.name)) {
+    // Validate column name matches SQL on FHIR specification pattern
+    // Pattern: must start with a letter, followed by letters, digits, or underscores
+    if (!/^[A-Za-z]\w*$/.test(column.name)) {
       throw new Error(
-        `Column name '${column.name}' is not database-friendly. Use alphanumeric and underscores only.`,
+        `Column name '${column.name}' does not match SQL on FHIR specification. Must start with a letter, followed by letters, digits, or underscores.`,
       );
     }
 

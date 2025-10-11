@@ -55,12 +55,20 @@ export async function executeViewDefinition(
       testId,
     );
     const sql = transpilationResult.sql;
+    const parameters = transpilationResult.parameters;
 
     // Log the generated SQL for debugging
     console.log("Generated SQL:", sql);
+    console.log("Parameters:", parameters);
 
-    // Execute the query
+    // Execute the query with parameterized values
     const request = new Request(pool);
+
+    // Bind parameters to prevent SQL injection
+    for (const [name, value] of Object.entries(parameters)) {
+      request.input(name, value);
+    }
+
     const queryResult = await request.query(sql);
 
     // Extract column names from the query result metadata
@@ -117,11 +125,9 @@ export function compareResults(
     if (Array.isArray(obj)) return obj.map(normalizeObject);
 
     const sorted: any = {};
-    Object.keys(obj)
-      .sort((a, b) => a.localeCompare(b))
-      .forEach((key) => {
-        sorted[key] = normalizeObject(obj[key]);
-      });
+    for (const key of Object.keys(obj).sort((a, b) => a.localeCompare(b))) {
+      sorted[key] = normalizeObject(obj[key]);
+    }
     return sorted;
   };
 

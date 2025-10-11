@@ -15,6 +15,7 @@ import {
 } from "./queryGenerator/index.js";
 import {
   ColumnInfo,
+  ParameterMap,
   TranspilationResult,
   ViewDefinition,
   ViewDefinitionConstant,
@@ -65,19 +66,20 @@ export class QueryGenerator {
     try {
       const context = this.createBaseContext(viewDef, testId);
       const columns = this.collectAllColumns(viewDef.select);
-      const selectStatements = this.generateAllSelectStatements(
+      const {statements, parameters} = this.generateAllSelectStatements(
         viewDef,
         context,
       );
 
       const sql =
-        selectStatements.length > 1
-          ? selectStatements.join("\nUNION ALL\n")
-          : selectStatements[0];
+        statements.length > 1
+          ? statements.join("\nUNION ALL\n")
+          : statements[0];
 
       return {
         sql,
         columns,
+        parameters,
       };
     } catch (error) {
       throw new Error(`Failed to generate query for ViewDefinition: ${error}`);
@@ -90,14 +92,22 @@ export class QueryGenerator {
   private generateAllSelectStatements(
     viewDef: ViewDefinition,
     context: TranspilerContext,
-  ): string[] {
+  ): {statements: string[], parameters: ParameterMap} {
     const unionCombinations = this.combinationExpander.expandCombinations(
       viewDef.select,
     );
 
-    return unionCombinations.map((combination) =>
-      this.generateStatementForCombination(combination, viewDef, context),
-    );
+    const statements: string[] = [];
+    const parameters: ParameterMap = {};
+
+    for (const combination of unionCombinations) {
+      const {statement, params} = this.generateStatementForCombination(combination, viewDef, context);
+      statements.push(statement);
+      // Merge parameters (all combinations should have the same resourceType and testId)
+      Object.assign(parameters, params);
+    }
+
+    return {statements, parameters};
   }
 
   /**
@@ -107,7 +117,7 @@ export class QueryGenerator {
     combination: SelectCombination,
     viewDef: ViewDefinition,
     context: TranspilerContext,
-  ): string {
+  ): {statement: string, params: ParameterMap} {
     const hasForEach = this.forEachProcessor.combinationHasForEach(combination);
 
     return hasForEach
@@ -122,13 +132,13 @@ export class QueryGenerator {
     combination: SelectCombination,
     viewDef: ViewDefinition,
     context: TranspilerContext,
-  ): string {
+  ): {statement: string, params: ParameterMap} {
     const selectClause = this.selectClauseBuilder.generateSimpleSelectClause(
       combination,
       context,
     );
     const fromClause = this.generateFromClause(context);
-    const whereClause = this.whereClauseBuilder.buildWhereClause(
+    const whereClauseResult = this.whereClauseBuilder.buildWhereClause(
       viewDef.resource,
       context.resourceAlias,
       context.testId,
@@ -137,11 +147,11 @@ export class QueryGenerator {
     );
 
     let statement = `${selectClause}\n${fromClause}`;
-    if (whereClause) {
-      statement += `\n${whereClause}`;
+    if (whereClauseResult.sql) {
+      statement += `\n${whereClauseResult.sql}`;
     }
 
-    return statement;
+    return {statement, params: whereClauseResult.parameters};
   }
 
   /**
@@ -151,7 +161,7 @@ export class QueryGenerator {
     combination: SelectCombination,
     viewDef: ViewDefinition,
     context: TranspilerContext,
-  ): string {
+  ): {statement: string, params: ParameterMap} {
     const fromClause = this.generateFromClause(context);
     const { forEachContextMap, topLevelForEach } =
       this.forEachProcessor.buildForEachContextMap(
@@ -169,7 +179,7 @@ export class QueryGenerator {
       context,
       forEachContextMap,
     );
-    const whereClause = this.whereClauseBuilder.buildWhereClause(
+    const whereClauseResult = this.whereClauseBuilder.buildWhereClause(
       viewDef.resource,
       context.resourceAlias,
       context.testId,
@@ -178,11 +188,11 @@ export class QueryGenerator {
     );
 
     let statement = `${selectClause}\n${fromClause}${applyClauses}`;
-    if (whereClause) {
-      statement += `\n${whereClause}`;
+    if (whereClauseResult.sql) {
+      statement += `\n${whereClauseResult.sql}`;
     }
 
-    return statement;
+    return {statement, params: whereClauseResult.parameters};
   }
 
   /**
