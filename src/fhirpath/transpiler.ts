@@ -10,7 +10,7 @@ import {
   fhirpathParser,
 } from "../generated/grammar/fhirpathParser";
 import type { ViewDefinitionColumnTag } from "../types.js";
-import { validateMsSqlType } from "../validation.js";
+import { validateAnsiSqlType, validateMsSqlType } from "../validation.js";
 import { FHIRPathToTSqlVisitor, TranspilerContext } from "./visitor";
 
 // Re-export TranspilerContext from visitor
@@ -79,8 +79,16 @@ export class Transpiler {
    * - Use MAX or generous fixed sizes to prevent truncation
    * - Preserve FHIR semantics (partial dates, arbitrary precision decimals)
    *
-   * Users can optimise storage using 'mssql/type' tags when they know their
-   * data constraints (e.g., using DATE instead of VARCHAR(10) for dates).
+   * Users can optimise storage using type tags:
+   * - 'mssql/type' - Direct SQL Server type (e.g., 'DATE', 'VARCHAR(50)')
+   * - 'ansi/type' - ANSI/ISO SQL standard type (e.g., 'INTEGER', 'CHARACTER(50)', 'BOOLEAN')
+   *
+   * Type precedence: mssql/type > ansi/type > FHIR type defaults
+   *
+   * Example tag usage:
+   * - { "name": "mssql/type", "value": "DATE" } - Use SQL Server DATE type
+   * - { "name": "ansi/type", "value": "INTEGER" } - Use ANSI INTEGER (converted to SQL Server INT)
+   * - { "name": "ansi/type", "value": "BOOLEAN" } - Use ANSI BOOLEAN (converted to SQL Server BIT)
    *
    * @param fhirType - FHIR primitive type name (e.g., 'string', 'integer')
    * @param tags - Optional array of column tags for type hints
@@ -101,7 +109,11 @@ export class Transpiler {
   }
 
   /**
-   * Get type override from mssql/type tag if present.
+   * Get type override from mssql/type or ansi/type tag if present.
+   *
+   * Precedence order:
+   * 1. mssql/type - Direct SQL Server type specification
+   * 2. ansi/type - ANSI/ISO SQL standard type (converted to SQL Server equivalent)
    */
   private static getTagTypeOverride(
     tags?: ViewDefinitionColumnTag[],
@@ -110,10 +122,17 @@ export class Transpiler {
       return null;
     }
 
+    // Check for mssql/type tag first (highest precedence)
     const mssqlTypeTag = tags.find((tag) => tag.name === "mssql/type");
     if (mssqlTypeTag) {
       validateMsSqlType(mssqlTypeTag.value);
       return mssqlTypeTag.value;
+    }
+
+    // Check for ansi/type tag (lower precedence)
+    const ansiTypeTag = tags.find((tag) => tag.name === "ansi/type");
+    if (ansiTypeTag) {
+      return validateAnsiSqlType(ansiTypeTag.value);
     }
 
     return null;

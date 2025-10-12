@@ -345,22 +345,164 @@ export function validateMsSqlType(sqlType: string): void {
 
   const trimmedType = sqlType.trim();
 
-  // Simple pattern for overall format: TYPE or TYPE(size) or TYPE(precision,scale)
-  // Supports MAX keyword for variable-length types.
-  const formatPattern = /^([A-Z_]+)(\s*\(\s*(\d+|MAX)(\s*,\s*\d+)?\s*\))?$/i;
-  const match = formatPattern.exec(trimmedType);
+  // Extract base type and parameters by finding the opening parenthesis
+  const openParenIndex = trimmedType.indexOf("(");
+  const baseTypePart =
+    openParenIndex === -1
+      ? trimmedType
+      : trimmedType.substring(0, openParenIndex).trim();
+  const paramsPart =
+    openParenIndex === -1 ? "" : trimmedType.substring(openParenIndex);
 
-  if (!match) {
+  // Validate base type name: letters, digits, underscore
+  if (!/^[A-Z_][A-Z0-9_]*$/i.test(baseTypePart)) {
     throw new Error(
       `Invalid MS SQL Server type format: '${sqlType}'. Must be a valid SQL Server data type such as INT, NVARCHAR(MAX), DECIMAL(38,18), DATETIME2(7), or DATETIMEOFFSET(3).`,
     );
   }
 
-  // Extract and validate the base type name.
-  const baseType = match[1].toUpperCase();
+  // Validate parameters if present: (size) or (precision,scale) where size can be MAX
+  if (paramsPart && !/^\(\s*(\d+|MAX)(\s*,\s*\d+)?\s*\)$/i.test(paramsPart)) {
+    throw new Error(
+      `Invalid MS SQL Server type format: '${sqlType}'. Must be a valid SQL Server data type such as INT, NVARCHAR(MAX), DECIMAL(38,18), DATETIME2(7), or DATETIMEOFFSET(3).`,
+    );
+  }
+
+  // Check if base type is valid
+  const baseType = baseTypePart.toUpperCase();
   if (!VALID_SQL_SERVER_TYPES.has(baseType)) {
     throw new Error(
       `Unknown MS SQL Server type: '${baseType}'. Must be a valid SQL Server data type such as INT, NVARCHAR, DECIMAL, DATETIME2, or DATETIMEOFFSET.`,
     );
   }
+}
+
+/**
+ * Mapping of ANSI/ISO SQL standard types to MS SQL Server equivalents.
+ * Based on ISO/IEC 9075 SQL standard and SQL Server data type synonyms.
+ */
+const ANSI_TO_MSSQL_TYPE_MAP = new Map<string, string>([
+  // Character types (SQL-92 and later)
+  ["CHARACTER", "CHAR"],
+  ["CHAR", "CHAR"],
+  ["CHARACTER VARYING", "VARCHAR"],
+  ["CHAR VARYING", "VARCHAR"],
+  ["NATIONAL CHARACTER", "NCHAR"],
+  ["NATIONAL CHAR", "NCHAR"],
+  ["NATIONAL CHARACTER VARYING", "NVARCHAR"],
+  ["NATIONAL CHAR VARYING", "NVARCHAR"],
+
+  // Numeric types - exact (SQL-92)
+  ["INTEGER", "INT"],
+  ["INT", "INT"],
+  ["SMALLINT", "SMALLINT"],
+  ["BIGINT", "BIGINT"],
+  ["DECIMAL", "DECIMAL"],
+  ["DEC", "DECIMAL"],
+  ["NUMERIC", "NUMERIC"],
+
+  // Numeric types - approximate (SQL-92)
+  ["FLOAT", "FLOAT"],
+  ["REAL", "REAL"],
+  ["DOUBLE PRECISION", "FLOAT"],
+
+  // Date/time types (SQL-92 and later)
+  ["DATE", "DATE"],
+  ["TIME", "TIME"],
+  // Note: ANSI TIMESTAMP maps to DATETIME2, not SQL Server's TIMESTAMP (which is for row versioning)
+  ["TIMESTAMP", "DATETIME2"],
+
+  // Boolean (SQL:1999)
+  // Note: SQL Server doesn't have native BOOLEAN, BIT is the closest equivalent
+  ["BOOLEAN", "BIT"],
+
+  // Binary types
+  ["BINARY VARYING", "VARBINARY"],
+]);
+
+/**
+ * Parse an ANSI/ISO SQL type into base type and parameters.
+ *
+ * @param typeString - The type string to parse
+ * @returns Object with baseType and parameters
+ */
+function parseAnsiSqlType(typeString: string): {
+  baseType: string;
+  parameters: string;
+} {
+  const openParenIndex = typeString.indexOf("(");
+  const baseTypePart =
+    openParenIndex === -1
+      ? typeString
+      : typeString.substring(0, openParenIndex).trim();
+  const paramsPart =
+    openParenIndex === -1 ? "" : typeString.substring(openParenIndex);
+
+  return {
+    baseType: baseTypePart.trim().toUpperCase(),
+    parameters: paramsPart,
+  };
+}
+
+/**
+ * Validate and convert ANSI/ISO SQL type specification to MS SQL Server type.
+ *
+ * Supports ANSI/ISO SQL standard types from SQL-92, SQL:1999, and later versions.
+ * Converts standard types to their MS SQL Server equivalents and validates the result.
+ *
+ * Examples:
+ * - 'INTEGER' → 'INT'
+ * - 'CHARACTER(50)' → 'CHAR(50)'
+ * - 'BOOLEAN' → 'BIT'
+ * - 'TIMESTAMP' → 'DATETIME2'
+ *
+ * @param ansiType - ANSI/ISO SQL type string (e.g., 'INTEGER', 'CHARACTER(20)', 'DECIMAL(10,2)')
+ * @returns MS SQL Server equivalent type
+ * @throws Error if type is invalid or unsupported
+ */
+export function validateAnsiSqlType(ansiType: string): string {
+  if (!ansiType || ansiType.trim().length === 0) {
+    throw new Error("ANSI SQL type cannot be empty.");
+  }
+
+  const trimmedType = ansiType.trim();
+  const { baseType, parameters } = parseAnsiSqlType(trimmedType);
+
+  // Validate base type: must start with letter, followed by letters and spaces
+  if (!/^[A-Z][A-Z\s]*$/i.test(baseType)) {
+    throw new Error(
+      `Invalid ANSI SQL type format: '${ansiType}'. Must be a valid ANSI/ISO SQL type such as INTEGER, CHARACTER(50), or DECIMAL(10,2).`,
+    );
+  }
+
+  // Validate parameters if present: (size) or (precision,scale) where size can be MAX
+  if (parameters && !/^\(\s*(\d+|MAX)(\s*,\s*\d+)?\s*\)$/i.test(parameters)) {
+    throw new Error(
+      `Invalid ANSI SQL type format: '${ansiType}'. Must be a valid ANSI/ISO SQL type such as INTEGER, CHARACTER(50), or DECIMAL(10,2).`,
+    );
+  }
+
+  // Look up MS SQL Server equivalent
+  const mssqlBaseType = ANSI_TO_MSSQL_TYPE_MAP.get(baseType);
+
+  if (!mssqlBaseType) {
+    // Check if it's already a valid SQL Server type (pass-through)
+    const mssqlType = baseType + parameters;
+    try {
+      validateMsSqlType(mssqlType);
+      return mssqlType;
+    } catch {
+      throw new Error(
+        `Unsupported ANSI SQL type: '${baseType}'. Must be a valid ANSI/ISO SQL standard type such as INTEGER, CHARACTER, DECIMAL, TIMESTAMP, or BOOLEAN.`,
+      );
+    }
+  }
+
+  // Construct MS SQL Server type with parameters
+  const mssqlType = mssqlBaseType + parameters;
+
+  // Validate the resulting MS SQL Server type
+  validateMsSqlType(mssqlType);
+
+  return mssqlType;
 }
