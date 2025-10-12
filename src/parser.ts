@@ -55,7 +55,9 @@ export class ViewDefinitionParser {
       !Array.isArray(data.select) ||
       data.select.length === 0
     ) {
-      throw new TypeError("ViewDefinition must have at least one select element.");
+      throw new TypeError(
+        "ViewDefinition must have at least one select element.",
+      );
     }
 
     // Status is optional for test cases, but recommended for production use
@@ -138,7 +140,9 @@ export class ViewDefinitionParser {
     }
 
     if (select.forEachOrNull && typeof select.forEachOrNull !== "string") {
-      throw new TypeError("forEachOrNull must be a string FHIRPath expression.");
+      throw new TypeError(
+        "forEachOrNull must be a string FHIRPath expression.",
+      );
     }
   }
 
@@ -239,7 +243,9 @@ export class ViewDefinitionParser {
    */
   private static validateSingleTag(columnName: string, tag: unknown): void {
     if (typeof tag !== "object" || tag === null) {
-      throw new TypeError(`Column '${columnName}' tag entry must be an object.`);
+      throw new TypeError(
+        `Column '${columnName}' tag entry must be an object.`,
+      );
     }
     if (
       !("name" in tag) ||
