@@ -11,6 +11,7 @@ export default defineConfig({
       reporter: ["text", "json", "html"],
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.d.ts"],
+      reportOnFailure: true,
     },
     // Custom reporters for SQL-on-FHIR test report generation
     reporters: ["default", "src/tests/utils/reporter"],
