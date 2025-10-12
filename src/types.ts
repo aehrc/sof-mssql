@@ -28,6 +28,7 @@ export interface UnvalidatedColumn {
   description?: unknown;
   collection?: unknown;
   type?: unknown;
+  tag?: unknown;
   [key: string]: unknown;
 }
 
@@ -103,6 +104,18 @@ export interface ViewDefinitionColumn extends UnvalidatedColumn {
   description?: string;
   collection?: boolean;
   type?: string;
+  tag?: ViewDefinitionColumnTag[];
+}
+
+/**
+ * ViewDefinition column tag for implementation-specific directives.
+ * Tags provide database-specific type hints or other metadata.
+ *
+ * Example: { name: "mssql/type", value: "NVARCHAR(50)" }
+ */
+export interface ViewDefinitionColumnTag {
+  name: string;
+  value: string;
 }
 
 export interface ViewDefinitionWhere {

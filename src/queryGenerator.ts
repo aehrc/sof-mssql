@@ -281,7 +281,7 @@ export class QueryGenerator {
         for (const column of select.column) {
           columns.push({
             name: column.name,
-            type: Transpiler.inferSqlType(column.type),
+            type: Transpiler.inferSqlType(column.type, column.tag),
             nullable: true, // FHIR data is generally nullable.
             description: column.description,
           });

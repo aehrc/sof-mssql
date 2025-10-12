@@ -287,3 +287,80 @@ export function validateTestId(testId: string): void {
     );
   }
 }
+
+/**
+ * Valid MS SQL Server base type names.
+ */
+const VALID_SQL_SERVER_TYPES = new Set([
+  "BIT",
+  "TINYINT",
+  "SMALLINT",
+  "INT",
+  "BIGINT",
+  "DECIMAL",
+  "NUMERIC",
+  "MONEY",
+  "SMALLMONEY",
+  "FLOAT",
+  "REAL",
+  "DATE",
+  "TIME",
+  "DATETIME",
+  "DATETIME2",
+  "DATETIMEOFFSET",
+  "SMALLDATETIME",
+  "CHAR",
+  "VARCHAR",
+  "TEXT",
+  "NCHAR",
+  "NVARCHAR",
+  "NTEXT",
+  "BINARY",
+  "VARBINARY",
+  "IMAGE",
+  "UNIQUEIDENTIFIER",
+  "XML",
+  "SQL_VARIANT",
+]);
+
+/**
+ * Validate MS SQL Server type specification.
+ *
+ * Ensures the type is a valid SQL Server data type with correct syntax.
+ * Supports all common SQL Server types including:
+ * - Integer types: BIT, TINYINT, SMALLINT, INT, BIGINT
+ * - Decimal types: DECIMAL, NUMERIC, MONEY, SMALLMONEY, FLOAT, REAL
+ * - Date/time types: DATE, TIME, DATETIME, DATETIME2, DATETIMEOFFSET, SMALLDATETIME
+ * - String types: CHAR, VARCHAR, TEXT, NCHAR, NVARCHAR, NTEXT (with MAX or size)
+ * - Binary types: BINARY, VARBINARY, IMAGE (with MAX or size)
+ * - Other: UNIQUEIDENTIFIER, XML, SQL_VARIANT
+ *
+ * @param sqlType - SQL Server type string (e.g., 'NVARCHAR(MAX)', 'INT', 'DECIMAL(38,18)')
+ * @throws Error if type is invalid
+ */
+export function validateMsSqlType(sqlType: string): void {
+  if (!sqlType || sqlType.trim().length === 0) {
+    throw new Error("SQL Server type cannot be empty.");
+  }
+
+  const trimmedType = sqlType.trim();
+
+  // Simple pattern for overall format: TYPE or TYPE(size) or TYPE(precision,scale)
+  // Supports MAX keyword for variable-length types.
+  const formatPattern = /^([A-Z_]+)(\s*\(\s*(\d+|MAX)(\s*,\s*\d+)?\s*\))?$/i;
+  const match = formatPattern.exec(trimmedType);
+
+  if (!match) {
+    throw new Error(
+      `Invalid MS SQL Server type format: '${sqlType}'. Must be a valid SQL Server data type such as INT, NVARCHAR(MAX), DECIMAL(38,18), DATETIME2(7), or DATETIMEOFFSET(3).`,
+    );
+  }
+
+  // Extract and validate the base type name.
+  const baseType = match[1].toUpperCase();
+  if (!VALID_SQL_SERVER_TYPES.has(baseType)) {
+    throw new Error(
+      `Unknown MS SQL Server type: '${baseType}'. Must be a valid SQL Server data type such as INT, NVARCHAR, DECIMAL, DATETIME2, or DATETIMEOFFSET.`,
+    );
+  }
+}

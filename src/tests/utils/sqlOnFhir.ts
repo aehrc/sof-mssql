@@ -155,6 +155,11 @@ function deepEqual(a: any, b: any): boolean {
   if (bothNullOrUndefined(a, b)) return true;
   if (eitherNullOrUndefined(a, b)) return false;
 
+  // Handle numeric comparisons (number vs numeric string)
+  if (isNumericComparison(a, b)) {
+    return compareNumericValues(a, b);
+  }
+
   if (typeof a !== typeof b) {
     return handleBooleanNumberConversion(a, b);
   }
@@ -164,6 +169,45 @@ function deepEqual(a: any, b: any): boolean {
   }
 
   return false;
+}
+
+/**
+ * Check if we're comparing numeric values (number vs number, or number vs numeric string).
+ */
+function isNumericComparison(a: any, b: any): boolean {
+  const aIsNumber = typeof a === "number";
+  const bIsNumber = typeof b === "number";
+  const aIsNumericString = typeof a === "string" && isNumericString(a);
+  const bIsNumericString = typeof b === "string" && isNumericString(b);
+
+  return (
+    (aIsNumber && bIsNumber) ||
+    (aIsNumber && bIsNumericString) ||
+    (aIsNumericString && bIsNumber) ||
+    (aIsNumericString && bIsNumericString)
+  );
+}
+
+/**
+ * Check if a string represents a valid number.
+ */
+function isNumericString(value: string): boolean {
+  if (value.trim() === "") return false;
+  const num = Number(value);
+  return !Number.isNaN(num) && Number.isFinite(num);
+}
+
+/**
+ * Compare two numeric values with tolerance for floating point precision.
+ * Handles comparisons between numbers and numeric strings.
+ */
+function compareNumericValues(a: any, b: any): boolean {
+  const numA = typeof a === "number" ? a : Number(a);
+  const numB = typeof b === "number" ? b : Number(b);
+
+  // Use a small epsilon for floating point comparison
+  const epsilon = 1e-10;
+  return Math.abs(numA - numB) < epsilon;
 }
 
 /**

@@ -9,6 +9,8 @@ import {
   EntireExpressionContext,
   fhirpathParser,
 } from "../generated/grammar/fhirpathParser";
+import type { ViewDefinitionColumnTag } from "../types.js";
+import { validateMsSqlType } from "../validation.js";
 import { FHIRPathToTSqlVisitor, TranspilerContext } from "./visitor";
 
 // Re-export TranspilerContext from visitor
@@ -65,29 +67,94 @@ export class Transpiler {
   }
 
   /**
-   * Get the SQL data type for a FHIRPath expression result.
+   * Get the SQL data type for a FHIR type, with optional tag-based override.
+   *
+   * Default mappings are conservative to accommodate ALL valid FHIR data,
+   * using MAX sizes where needed and NVARCHAR for any fields that could
+   * potentially contain Unicode characters.
+   *
+   * Design principles:
+   * - Use NVARCHAR for fields that may contain Unicode (string, code, uri/url/canonical)
+   * - Use VARCHAR for ASCII-only fields (id, uuid, oid, decimal, dates/times)
+   * - Use MAX or generous fixed sizes to prevent truncation
+   * - Preserve FHIR semantics (partial dates, arbitrary precision decimals)
+   *
+   * Users can optimise storage using 'mssql/type' tags when they know their
+   * data constraints (e.g., using DATE instead of VARCHAR(10) for dates).
+   *
+   * @param fhirType - FHIR primitive type name (e.g., 'string', 'integer')
+   * @param tags - Optional array of column tags for type hints
+   * @returns MS SQL Server type specification
    */
-  static inferSqlType(fhirType?: string): string {
+  static inferSqlType(
+    fhirType?: string,
+    tags?: ViewDefinitionColumnTag[],
+  ): string {
+    // Check for mssql/type tag override.
+    const tagOverride = this.getTagTypeOverride(tags);
+    if (tagOverride) {
+      return tagOverride;
+    }
+
+    // Use default FHIR type mapping.
+    return this.getDefaultFhirTypeMapping(fhirType);
+  }
+
+  /**
+   * Get type override from mssql/type tag if present.
+   */
+  private static getTagTypeOverride(
+    tags?: ViewDefinitionColumnTag[],
+  ): string | null {
+    if (!tags) {
+      return null;
+    }
+
+    const mssqlTypeTag = tags.find((tag) => tag.name === "mssql/type");
+    if (mssqlTypeTag) {
+      validateMsSqlType(mssqlTypeTag.value);
+      return mssqlTypeTag.value;
+    }
+
+    return null;
+  }
+
+  /**
+   * Get default MS SQL Server type mapping for a FHIR primitive type.
+   */
+  private static getDefaultFhirTypeMapping(fhirType?: string): string {
+    // Conservative default type mappings based on FHIR R4 constraints.
+    // Sized to accommodate ALL valid FHIR data.
+    // Uses NVARCHAR for potential Unicode, VARCHAR for ASCII-only.
     const typeMap: Record<string, string> = {
-      id: "NVARCHAR(MAX)",
-      string: "NVARCHAR(MAX)",
-      markdown: "NVARCHAR(MAX)",
-      code: "NVARCHAR(MAX)",
-      uri: "NVARCHAR(MAX)",
-      url: "NVARCHAR(MAX)",
-      canonical: "NVARCHAR(MAX)",
-      uuid: "NVARCHAR(MAX)",
-      oid: "NVARCHAR(MAX)",
+      // ASCII-only types with fixed constraints
+      id: "VARCHAR(64)",
       boolean: "BIT",
       integer: "INT",
       positiveint: "INT",
       unsignedint: "INT",
       integer64: "BIGINT",
-      decimal: "DECIMAL(18,6)",
-      date: "DATETIME2",
-      datetime: "DATETIME2",
-      instant: "DATETIME2",
-      time: "TIME",
+
+      // ASCII-only structured formats
+      uuid: "VARCHAR(100)",
+      oid: "VARCHAR(255)",
+      decimal: "VARCHAR(MAX)",
+      date: "VARCHAR(10)",
+      datetime: "VARCHAR(50)",
+      instant: "VARCHAR(50)",
+      time: "VARCHAR(20)",
+
+      // Unicode-capable text types
+      string: "NVARCHAR(MAX)",
+      markdown: "NVARCHAR(MAX)",
+      code: "NVARCHAR(MAX)",
+
+      // URIs (can be IRIs with Unicode)
+      uri: "NVARCHAR(MAX)",
+      url: "NVARCHAR(MAX)",
+      canonical: "NVARCHAR(MAX)",
+
+      // Binary data
       base64binary: "VARBINARY(MAX)",
     };
 

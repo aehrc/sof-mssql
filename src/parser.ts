@@ -47,7 +47,7 @@ export class ViewDefinitionParser {
     data: UnvalidatedViewDefinition,
   ): data is ViewDefinition {
     if (!data.resource || typeof data.resource !== "string") {
-      throw new Error("ViewDefinition must specify a resource type.");
+      throw new TypeError("ViewDefinition must specify a resource type.");
     }
 
     if (
@@ -55,7 +55,7 @@ export class ViewDefinitionParser {
       !Array.isArray(data.select) ||
       data.select.length === 0
     ) {
-      throw new Error("ViewDefinition must have at least one select element.");
+      throw new TypeError("ViewDefinition must have at least one select element.");
     }
 
     // Status is optional for test cases, but recommended for production use
@@ -89,7 +89,7 @@ export class ViewDefinitionParser {
         !("name" in constant) ||
         typeof constant.name !== "string"
       ) {
-        throw new Error("Constant must have a valid name.");
+        throw new TypeError("Constant must have a valid name.");
       }
 
       // Validate constant name matches SQL on FHIR specification pattern
@@ -134,11 +134,11 @@ export class ViewDefinitionParser {
    */
   private static validateSelectExpressions(select: UnvalidatedSelect): void {
     if (select.forEach && typeof select.forEach !== "string") {
-      throw new Error("forEach must be a string FHIRPath expression.");
+      throw new TypeError("forEach must be a string FHIRPath expression.");
     }
 
     if (select.forEachOrNull && typeof select.forEachOrNull !== "string") {
-      throw new Error("forEachOrNull must be a string FHIRPath expression.");
+      throw new TypeError("forEachOrNull must be a string FHIRPath expression.");
     }
   }
 
@@ -193,11 +193,11 @@ export class ViewDefinitionParser {
     selectContext?: UnvalidatedSelect,
   ): column is ViewDefinitionColumn {
     if (!column.name || typeof column.name !== "string") {
-      throw new Error("Column must have a valid name.");
+      throw new TypeError("Column must have a valid name.");
     }
 
     if (!column.path || typeof column.path !== "string") {
-      throw new Error("Column must have a valid FHIRPath expression.");
+      throw new TypeError("Column must have a valid FHIRPath expression.");
     }
 
     // Validate column name matches SQL on FHIR specification pattern
@@ -211,7 +211,54 @@ export class ViewDefinitionParser {
     // Validate collection constraints
     this.validateCollectionConstraints(column, selectContext);
 
+    // Validate tag structure if present
+    this.validateColumnTags(column);
+
     return true;
+  }
+
+  /**
+   * Validate column tag structure.
+   */
+  private static validateColumnTags(column: UnvalidatedColumn): void {
+    if (column.tag === undefined) {
+      return;
+    }
+
+    if (!Array.isArray(column.tag)) {
+      throw new TypeError(`Column '${column.name}' tag must be an array.`);
+    }
+
+    for (const tag of column.tag) {
+      this.validateSingleTag(column.name as string, tag);
+    }
+  }
+
+  /**
+   * Validate a single tag object.
+   */
+  private static validateSingleTag(columnName: string, tag: unknown): void {
+    if (typeof tag !== "object" || tag === null) {
+      throw new TypeError(`Column '${columnName}' tag entry must be an object.`);
+    }
+    if (
+      !("name" in tag) ||
+      typeof tag.name !== "string" ||
+      tag.name.trim().length === 0
+    ) {
+      throw new TypeError(
+        `Column '${columnName}' tag must have a non-empty 'name' string.`,
+      );
+    }
+    if (
+      !("value" in tag) ||
+      typeof tag.value !== "string" ||
+      tag.value.trim().length === 0
+    ) {
+      throw new TypeError(
+        `Column '${columnName}' tag must have a non-empty 'value' string.`,
+      );
+    }
   }
 
   /**
