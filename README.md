@@ -209,59 +209,76 @@ WHERE [r].[resource_type] = 'Patient'
 
 ### Basic usage
 
-```javascript
+```typescript
 import {SqlOnFhir} from 'sof-mssql';
 
-// Create an instance with default configuration
 const sqlOnFhir = new SqlOnFhir();
+```
 
-// Transpile a ViewDefinition to T-SQL
-const viewDefinition = {
-  resourceType: 'ViewDefinition',
-  resource: 'Patient',
-  name: 'patient_demographics',
-  select: [
+Create a ViewDefinition to transpile:
+
+```json
+{
+  "resourceType": "ViewDefinition",
+  "resource": "Patient",
+  "name": "patient_demographics",
+  "select": [
     {
-      column: [
+      "column": [
         {
-          name: 'id',
-          path: 'id',
-          type: 'id'
+          "name": "id",
+          "path": "id",
+          "type": "id"
         },
         {
-          name: 'family_name',
-          path: 'name.family',
-          type: 'string'
+          "name": "family_name",
+          "path": "name.family",
+          "type": "string"
         },
         {
-          name: 'birth_date',
-          path: 'birthDate',
-          type: 'date'
+          "name": "birth_date",
+          "path": "birthDate",
+          "type": "date"
         }
       ]
     }
   ]
-};
+}
+```
 
+Transpile the ViewDefinition to T-SQL:
+
+```typescript
 const result = sqlOnFhir.transpile(viewDefinition);
 
 console.log(result.sql);
-// Output:
-// SELECT
-//   r.id AS [id],
-//   JSON_VALUE(r.json, '$.name[0].family') AS [family_name],
-//   CAST(JSON_VALUE(r.json, '$.birthDate') AS DATETIME2) AS [birth_date]
-// FROM [dbo].[fhir_resources] AS [r]
-// WHERE [r].[resource_type] = 'Patient'
+```
 
-// Access column metadata
+Generated SQL output:
+
+```sql
+SELECT
+  r.id AS [id],
+  JSON_VALUE(r.json, '$.name[0].family') AS [family_name],
+  CAST(JSON_VALUE(r.json, '$.birthDate') AS DATETIME2) AS [birth_date]
+FROM [dbo].[fhir_resources] AS [r]
+WHERE [r].[resource_type] = 'Patient'
+```
+
+Access column metadata:
+
+```typescript
 console.log(result.columns);
-// Output:
-// [
-//   { name: 'id', type: 'NVARCHAR(64)', nullable: true },
-//   { name: 'family_name', type: 'NVARCHAR(MAX)', nullable: true },
-//   { name: 'birth_date', type: 'DATETIME2', nullable: true }
-// ]
+```
+
+Column metadata output:
+
+```json
+[
+  { "name": "id", "type": "VARCHAR(64)", "nullable": true },
+  { "name": "family_name", "type": "NVARCHAR(MAX)", "nullable": true },
+  { "name": "birth_date", "type": "VARCHAR(10)", "nullable": true }
+]
 ```
 
 ### Custom table configuration
@@ -292,7 +309,130 @@ const fhirResource = {
   // ... rest of ViewDefinition
 };
 const result2 = sqlOnFhir.transpile(fhirResource);
+````
+
+### Type mappings and type hints
+
+#### Default type mappings
+
+By default, FHIR primitive types are mapped to the following T-SQL types:
+
+| FHIR Type                               | Default T-SQL Type | Rationale                                 |
+|-----------------------------------------|--------------------|-------------------------------------------|
+| `id`                                    | `VARCHAR(64)`      | ASCII-only, fixed max length              |
+| `boolean`                               | `BIT`              | Native boolean                            |
+| `integer`, `positiveint`, `unsignedint` | `INT`              | 32-bit integer                            |
+| `integer64`                             | `BIGINT`           | 64-bit integer                            |
+| `decimal`                               | `VARCHAR(MAX)`     | Preserves arbitrary precision             |
+| `date`                                  | `VARCHAR(10)`      | Preserves partial dates (e.g., "2024-01") |
+| `datetime`                              | `VARCHAR(50)`      | Preserves partial datetimes and timezones |
+| `instant`                               | `VARCHAR(50)`      | Preserves full ISO 8601 format            |
+| `time`                                  | `VARCHAR(20)`      | Preserves partial times                   |
+| `string`, `markdown`, `code`            | `NVARCHAR(MAX)`    | Unicode-capable text                      |
+| `uri`, `url`, `canonical`               | `NVARCHAR(MAX)`    | Can contain Unicode (IRIs)                |
+| `uuid`                                  | `VARCHAR(100)`     | ASCII UUID format                         |
+| `oid`                                   | `VARCHAR(255)`     | ASCII OID format                          |
+| `base64binary`                          | `VARBINARY(MAX)`   | Binary data                               |
+
+**Design principle:** Default mappings use `VARCHAR` for temporal and numeric types to preserve FHIR semantics (partial dates, arbitrary precision decimals) rather than forcing conversion to SQL native types.
+
+#### Using type hints
+
+You can override default type mappings using the `tag` array on column definitions. Two tag types are supported:
+
+**`tsql/type` - Direct T-SQL type specification:**
+
+```json
+{
+  "name": "birth_date",
+  "path": "birthDate",
+  "type": "date",
+  "tag": [
+    { "name": "tsql/type", "value": "DATE" }
+  ]
+}
 ```
+
+This generates a CAST expression: `CAST(JSON_VALUE(r.json, '$.birthDate') AS DATE) AS [birth_date]`
+
+**`ansi/type` - ANSI/ISO SQL standard types (automatically converted to T-SQL):**
+
+```json
+{
+  "name": "age",
+  "path": "age",
+  "type": "integer",
+  "tag": [
+    { "name": "ansi/type", "value": "INTEGER" }
+  ]
+}
+```
+
+The ANSI type `INTEGER` is automatically converted to T-SQL `INT`.
+
+```json
+{
+  "name": "active",
+  "path": "active",
+  "type": "boolean",
+  "tag": [
+    { "name": "ansi/type", "value": "BOOLEAN" }
+  ]
+}
+```
+
+The ANSI type `BOOLEAN` is automatically converted to T-SQL `BIT`.
+
+**Type precedence:** `tsql/type` > `ansi/type` > FHIR type defaults
+
+**Supported ANSI types:**
+- Character: `CHARACTER`, `CHARACTER VARYING`, `NATIONAL CHARACTER VARYING`
+- Numeric: `INTEGER`, `SMALLINT`, `BIGINT`, `DECIMAL`, `NUMERIC`, `FLOAT`, `REAL`, `DOUBLE PRECISION`
+- Temporal: `DATE`, `TIME`, `TIMESTAMP` (converted to `DATETIME2`)
+- Boolean: `BOOLEAN` (converted to `BIT`)
+
+**Example with multiple columns:**
+
+This example demonstrates how different type hints affect the resulting SQL types:
+
+```json
+{
+  "resourceType": "ViewDefinition",
+  "resource": "Patient",
+  "select": [
+    {
+      "column": [
+        {
+          "name": "id",
+          "path": "id",
+          "type": "id"
+        },
+        {
+          "name": "birth_date",
+          "path": "birthDate",
+          "type": "date",
+          "tag": [
+            { "name": "tsql/type", "value": "DATE" }
+          ]
+        },
+        {
+          "name": "deceased",
+          "path": "deceasedBoolean",
+          "type": "boolean",
+          "tag": [
+            { "name": "ansi/type", "value": "BOOLEAN" }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Type behaviour for each column:
+- `id` - Uses default FHIR type mapping: `VARCHAR(64)`
+- `birth_date` - Overrides default `VARCHAR(10)` with T-SQL `DATE` type
+- `deceased` - Uses ANSI `BOOLEAN` type, automatically converted to T-SQL `BIT`
 
 ## Database setup
 
