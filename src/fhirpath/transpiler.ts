@@ -80,15 +80,15 @@ export class Transpiler {
    * - Preserve FHIR semantics (partial dates, arbitrary precision decimals)
    *
    * Users can optimise storage using type tags:
-   * - 'mssql/type' - Direct SQL Server type (e.g., 'DATE', 'VARCHAR(50)')
+   * - 'tsql/type' - Direct T-SQL type (e.g., 'DATE', 'VARCHAR(50)')
    * - 'ansi/type' - ANSI/ISO SQL standard type (e.g., 'INTEGER', 'CHARACTER(50)', 'BOOLEAN')
    *
-   * Type precedence: mssql/type > ansi/type > FHIR type defaults
+   * Type precedence: tsql/type > ansi/type > FHIR type defaults
    *
    * Example tag usage:
-   * - { "name": "mssql/type", "value": "DATE" } - Use SQL Server DATE type
-   * - { "name": "ansi/type", "value": "INTEGER" } - Use ANSI INTEGER (converted to SQL Server INT)
-   * - { "name": "ansi/type", "value": "BOOLEAN" } - Use ANSI BOOLEAN (converted to SQL Server BIT)
+   * - { "name": "tsql/type", "value": "DATE" } - Use T-SQL DATE type
+   * - { "name": "ansi/type", "value": "INTEGER" } - Use ANSI INTEGER (converted to T-SQL INT)
+   * - { "name": "ansi/type", "value": "BOOLEAN" } - Use ANSI BOOLEAN (converted to T-SQL BIT)
    *
    * @param fhirType - FHIR primitive type name (e.g., 'string', 'integer')
    * @param tags - Optional array of column tags for type hints
@@ -98,7 +98,7 @@ export class Transpiler {
     fhirType?: string,
     tags?: ViewDefinitionColumnTag[],
   ): string {
-    // Check for mssql/type tag override.
+    // Check for tsql/type tag override.
     const tagOverride = this.getTagTypeOverride(tags);
     if (tagOverride) {
       return tagOverride;
@@ -109,11 +109,11 @@ export class Transpiler {
   }
 
   /**
-   * Get type override from mssql/type or ansi/type tag if present.
+   * Get type override from tsql/type or ansi/type tag if present.
    *
    * Precedence order:
-   * 1. mssql/type - Direct SQL Server type specification
-   * 2. ansi/type - ANSI/ISO SQL standard type (converted to SQL Server equivalent)
+   * 1. tsql/type - Direct T-SQL type specification
+   * 2. ansi/type - ANSI/ISO SQL standard type (converted to T-SQL equivalent)
    */
   private static getTagTypeOverride(
     tags?: ViewDefinitionColumnTag[],
@@ -122,11 +122,11 @@ export class Transpiler {
       return null;
     }
 
-    // Check for mssql/type tag first (highest precedence)
-    const mssqlTypeTag = tags.find((tag) => tag.name === "mssql/type");
-    if (mssqlTypeTag) {
-      validateMsSqlType(mssqlTypeTag.value);
-      return mssqlTypeTag.value;
+    // Check for tsql/type tag first (highest precedence)
+    const tsqlTypeTag = tags.find((tag) => tag.name === "tsql/type");
+    if (tsqlTypeTag) {
+      validateMsSqlType(tsqlTypeTag.value);
+      return tsqlTypeTag.value;
     }
 
     // Check for ansi/type tag (lower precedence)

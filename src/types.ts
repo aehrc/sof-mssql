@@ -111,7 +111,7 @@ export interface ViewDefinitionColumn extends UnvalidatedColumn {
  * ViewDefinition column tag for implementation-specific directives.
  * Tags provide database-specific type hints or other metadata.
  *
- * Example: { name: "mssql/type", value: "NVARCHAR(50)" }
+ * Example: { name: "tsql/type", value: "NVARCHAR(50)" }
  */
 export interface ViewDefinitionColumnTag {
   name: string;
