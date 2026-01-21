@@ -354,10 +354,8 @@ export class RepeatProcessor {
     const recursiveSql = recursiveMembers.join("\n  UNION ALL\n");
 
     return `${cteAlias} AS (
-  -- Anchor: initial items from resource root using first path.
   ${anchorSql}
   UNION ALL
-  -- Recursive: follow all paths at each level.
   ${recursiveSql}
 )`;
   }
