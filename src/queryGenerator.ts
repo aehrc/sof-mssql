@@ -114,13 +114,14 @@ export class QueryGenerator {
     const cteCounter = { value: 0 };
 
     for (const combination of unionCombinations) {
-      const { statement, cteDefinitions } = this.generateStatementForCombination(
-        combination,
-        viewDef,
-        context,
-        isMultiUnion,
-        cteCounter,
-      );
+      const { statement, cteDefinitions } =
+        this.generateStatementForCombination(
+          combination,
+          viewDef,
+          context,
+          isMultiUnion,
+          cteCounter,
+        );
       statements.push(statement);
       allCteDefinitions.push(...cteDefinitions);
     }
@@ -148,8 +149,8 @@ export class QueryGenerator {
     combination: SelectCombination,
     viewDef: ViewDefinition,
     context: TranspilerContext,
-    isMultiUnion: boolean = false,
-    cteCounter: { value: number } = { value: 0 },
+    isMultiUnion: boolean,
+    cteCounter: { value: number },
   ): { statement: string; cteDefinitions: string[] } {
     const hasRepeat = this.repeatProcessor.combinationHasRepeat(combination);
     const hasForEach = this.forEachProcessor.combinationHasForEach(combination);
@@ -267,8 +268,8 @@ export class QueryGenerator {
     combination: SelectCombination,
     viewDef: ViewDefinition,
     context: TranspilerContext,
-    isMultiUnion: boolean = false,
-    cteCounter: { value: number } = { value: 0 },
+    isMultiUnion: boolean,
+    cteCounter: { value: number },
   ): { statement: string; cteDefinitions: string[] } {
     // Build repeat contexts and CTEs.
     const { repeatContextMap, topLevelRepeat } =
@@ -340,11 +341,7 @@ export class QueryGenerator {
         combination,
       );
 
-    this.updateForEachSourcesForRepeat(
-      forEachContextMap,
-      repeatContextMap,
-      combination,
-    );
+    this.updateForEachSourcesForRepeat(forEachContextMap, repeatContextMap);
 
     return {
       selectClause: this.selectClauseBuilder.generateRepeatSelectClause(
@@ -379,9 +376,7 @@ export class QueryGenerator {
     }
 
     const withClause =
-      cteDefinitions.length > 0
-        ? `WITH\n${cteDefinitions.join(",\n")}\n`
-        : "";
+      cteDefinitions.length > 0 ? `WITH\n${cteDefinitions.join(",\n")}\n` : "";
     return `${withClause}${baseStatement}`;
   }
 
@@ -395,13 +390,11 @@ export class QueryGenerator {
   private updateForEachSourcesForRepeat(
     forEachContextMap: Map<ViewDefinitionSelect, TranspilerContext>,
     repeatContextMap: Map<ViewDefinitionSelect, RepeatContext>,
-    combination: SelectCombination,
   ): void {
     // Find the repeat select that contains each forEach.
     for (const [forEachSelect, forEachContext] of forEachContextMap) {
       const containingRepeat = this.findContainingRepeat(
         forEachSelect,
-        combination,
         repeatContextMap,
       );
 
@@ -420,7 +413,6 @@ export class QueryGenerator {
    */
   private findContainingRepeat(
     forEachSelect: ViewDefinitionSelect,
-    combination: SelectCombination,
     repeatContextMap: Map<ViewDefinitionSelect, RepeatContext>,
   ): ViewDefinitionSelect | undefined {
     // Check each repeat select to see if the forEach is nested within it.
