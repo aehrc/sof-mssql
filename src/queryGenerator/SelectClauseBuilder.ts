@@ -162,7 +162,11 @@ export class SelectClauseBuilder {
           // Nested forEach uses its own context (source updated to use repeat CTE).
           const nestedContext = forEachContextMap.get(nestedSelect);
           if (nestedContext && nestedSelect.column) {
-            this.addColumnsToList(nestedSelect.column, columnParts, nestedContext);
+            this.addColumnsToList(
+              nestedSelect.column,
+              columnParts,
+              nestedContext,
+            );
           }
         } else if (nestedSelect.column) {
           // Non-forEach nested selects use the repeat context.
@@ -242,7 +246,11 @@ export class SelectClauseBuilder {
         } else if (this.isForEachSelect(nestedSelect) && forEachContextMap) {
           const nestedContext = forEachContextMap.get(nestedSelect);
           if (nestedContext && nestedSelect.column) {
-            this.addColumnsToList(nestedSelect.column, columnParts, nestedContext);
+            this.addColumnsToList(
+              nestedSelect.column,
+              columnParts,
+              nestedContext,
+            );
           }
         } else if (nestedSelect.column) {
           this.addColumnsToList(nestedSelect.column, columnParts, context);

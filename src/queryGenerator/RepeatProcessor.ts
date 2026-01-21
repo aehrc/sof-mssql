@@ -428,10 +428,7 @@ export class RepeatProcessor {
    * @param testId - Optional test ID for filtering.
    * @returns SQL condition string or empty string if no testId.
    */
-  private buildTestIdCondition(
-    resourceAlias: string,
-    testId?: string,
-  ): string {
+  private buildTestIdCondition(resourceAlias: string, testId?: string): string {
     if (!testId) {
       return "";
     }
