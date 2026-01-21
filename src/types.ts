@@ -41,6 +41,7 @@ export interface UnvalidatedSelect {
   select?: UnvalidatedSelect[];
   forEach?: unknown;
   forEachOrNull?: unknown;
+  repeat?: unknown;
   unionAll?: UnvalidatedSelect[];
   where?: unknown[];
   [key: string]: unknown;
@@ -94,6 +95,7 @@ export interface ViewDefinitionSelect extends UnvalidatedSelect {
   select?: ViewDefinitionSelect[];
   forEach?: string;
   forEachOrNull?: string;
+  repeat?: string[];
   unionAll?: ViewDefinitionSelect[];
   where?: ViewDefinitionWhere[];
 }

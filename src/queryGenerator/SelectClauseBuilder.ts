@@ -6,6 +6,7 @@ import { TranspilerContext } from "../fhirpath/transpiler.js";
 import { ViewDefinitionColumn, ViewDefinitionSelect } from "../types.js";
 import { SelectCombination } from "./SelectCombinationExpander.js";
 import { ColumnExpressionGenerator } from "./ColumnExpressionGenerator.js";
+import { RepeatContext } from "./RepeatProcessor.js";
 
 /**
  * Handles generation of SELECT clauses.
@@ -70,6 +71,239 @@ export class SelectClauseBuilder {
     }
 
     return `SELECT\n  ${columnParts.join(",\n  ")}`;
+  }
+
+  /**
+   * Generate SELECT clause for repeat statements.
+   *
+   * For repeat selects, columns are extracted from the CTE's item_json column.
+   * Non-repeat columns use the base context (resource JSON).
+   * If forEach is also present, those columns use the forEach context.
+   *
+   * @param combination - The select combination being processed.
+   * @param context - The base transpiler context.
+   * @param repeatContextMap - Map of repeat selects to their contexts.
+   * @param forEachContextMap - Optional map of forEach selects to their contexts.
+   * @returns The generated SELECT clause.
+   */
+  generateRepeatSelectClause(
+    combination: SelectCombination,
+    context: TranspilerContext,
+    repeatContextMap: Map<ViewDefinitionSelect, RepeatContext>,
+    forEachContextMap?: Map<ViewDefinitionSelect, TranspilerContext>,
+  ): string {
+    const columnParts: string[] = [];
+
+    for (let i = 0; i < combination.selects.length; i++) {
+      const select = combination.selects[i];
+      const unionChoice = combination.unionChoices[i];
+
+      if (this.isRepeatSelect(select)) {
+        this.addRepeatSelectColumns(
+          select,
+          unionChoice,
+          columnParts,
+          repeatContextMap,
+          forEachContextMap,
+        );
+      } else if (this.isForEachSelect(select) && forEachContextMap) {
+        this.addForEachSelectColumns(
+          select,
+          unionChoice,
+          columnParts,
+          forEachContextMap,
+        );
+      } else {
+        this.addNonRepeatSelectColumns(
+          select,
+          unionChoice,
+          columnParts,
+          context,
+          repeatContextMap,
+          forEachContextMap,
+        );
+      }
+    }
+
+    return `SELECT\n  ${columnParts.join(",\n  ")}`;
+  }
+
+  /**
+   * Add columns for a repeat select.
+   *
+   * Columns within the repeat use the repeat context (CTE item_json).
+   * Nested forEach within the repeat use their forEach context.
+   */
+  private addRepeatSelectColumns(
+    select: ViewDefinitionSelect,
+    unionChoice: number,
+    columnParts: string[],
+    repeatContextMap: Map<ViewDefinitionSelect, RepeatContext>,
+    forEachContextMap?: Map<ViewDefinitionSelect, TranspilerContext>,
+  ): void {
+    const repeatContext = repeatContextMap.get(select);
+    if (!repeatContext) {
+      return;
+    }
+
+    // Add columns from the repeat select using its transpiler context.
+    if (select.column) {
+      this.addColumnsToList(
+        select.column,
+        columnParts,
+        repeatContext.transpilerContext,
+      );
+    }
+
+    // Handle nested selects within the repeat.
+    if (select.select) {
+      for (const nestedSelect of select.select) {
+        if (this.isForEachSelect(nestedSelect) && forEachContextMap) {
+          // Nested forEach uses its own context (source updated to use repeat CTE).
+          const nestedContext = forEachContextMap.get(nestedSelect);
+          if (nestedContext && nestedSelect.column) {
+            this.addColumnsToList(nestedSelect.column, columnParts, nestedContext);
+          }
+        } else if (nestedSelect.column) {
+          // Non-forEach nested selects use the repeat context.
+          this.addColumnsToList(
+            nestedSelect.column,
+            columnParts,
+            repeatContext.transpilerContext,
+          );
+        }
+      }
+    }
+
+    // Handle unionAll within the repeat (if applicable).
+    this.addRepeatUnionAllColumns(
+      select,
+      unionChoice,
+      columnParts,
+      repeatContext.transpilerContext,
+      repeatContextMap,
+    );
+  }
+
+  /**
+   * Add columns for unionAll branches within a repeat select.
+   */
+  private addRepeatUnionAllColumns(
+    select: ViewDefinitionSelect,
+    unionChoice: number,
+    columnParts: string[],
+    defaultContext: TranspilerContext,
+    repeatContextMap: Map<ViewDefinitionSelect, RepeatContext>,
+  ): void {
+    if (unionChoice < 0 || !select.unionAll?.[unionChoice]) {
+      return;
+    }
+
+    const chosenBranch = select.unionAll[unionChoice];
+    if (!chosenBranch.column) {
+      return;
+    }
+
+    // Check if the chosen branch is also a repeat.
+    const branchRepeatContext = repeatContextMap.get(chosenBranch);
+    const branchContext = branchRepeatContext
+      ? branchRepeatContext.transpilerContext
+      : defaultContext;
+
+    this.addColumnsToList(chosenBranch.column, columnParts, branchContext);
+  }
+
+  /**
+   * Add columns for a non-repeat select (when repeat is present elsewhere).
+   */
+  private addNonRepeatSelectColumns(
+    select: ViewDefinitionSelect,
+    unionChoice: number,
+    columnParts: string[],
+    context: TranspilerContext,
+    repeatContextMap: Map<ViewDefinitionSelect, RepeatContext>,
+    forEachContextMap?: Map<ViewDefinitionSelect, TranspilerContext>,
+  ): void {
+    if (select.column) {
+      this.addColumnsToList(select.column, columnParts, context);
+    }
+
+    // Handle nested selects.
+    if (select.select) {
+      for (const nestedSelect of select.select) {
+        if (this.isRepeatSelect(nestedSelect)) {
+          this.addRepeatSelectColumns(
+            nestedSelect,
+            -1,
+            columnParts,
+            repeatContextMap,
+            forEachContextMap,
+          );
+        } else if (this.isForEachSelect(nestedSelect) && forEachContextMap) {
+          const nestedContext = forEachContextMap.get(nestedSelect);
+          if (nestedContext && nestedSelect.column) {
+            this.addColumnsToList(nestedSelect.column, columnParts, nestedContext);
+          }
+        } else if (nestedSelect.column) {
+          this.addColumnsToList(nestedSelect.column, columnParts, context);
+        }
+      }
+    }
+
+    // Handle unionAll within non-repeat select.
+    this.addUnionAllColumnsForRepeatContext(
+      select,
+      unionChoice,
+      columnParts,
+      context,
+      repeatContextMap,
+      forEachContextMap,
+    );
+  }
+
+  /**
+   * Add unionAll columns when repeat context is available.
+   */
+  private addUnionAllColumnsForRepeatContext(
+    select: ViewDefinitionSelect,
+    unionChoice: number,
+    columnParts: string[],
+    defaultContext: TranspilerContext,
+    repeatContextMap: Map<ViewDefinitionSelect, RepeatContext>,
+    forEachContextMap?: Map<ViewDefinitionSelect, TranspilerContext>,
+  ): void {
+    if (unionChoice < 0 || !select.unionAll?.[unionChoice]) {
+      return;
+    }
+
+    const chosenBranch = select.unionAll[unionChoice];
+    if (!chosenBranch.column) {
+      return;
+    }
+
+    // Determine context based on directive type.
+    let branchContext: TranspilerContext = defaultContext;
+
+    if (this.isRepeatSelect(chosenBranch)) {
+      const repeatContext = repeatContextMap.get(chosenBranch);
+      if (repeatContext) {
+        branchContext = repeatContext.transpilerContext;
+      }
+    } else if (this.isForEachSelect(chosenBranch) && forEachContextMap) {
+      const forEachContext = forEachContextMap.get(chosenBranch);
+      if (forEachContext) {
+        branchContext = forEachContext;
+      }
+    }
+
+    this.addColumnsToList(chosenBranch.column, columnParts, branchContext);
+  }
+
+  /**
+   * Check if a select is a repeat select.
+   */
+  private isRepeatSelect(select: ViewDefinitionSelect): boolean {
+    return !!(select.repeat && select.repeat.length > 0);
   }
 
   /**

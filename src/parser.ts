@@ -132,7 +132,8 @@ export class ViewDefinitionParser {
   }
 
   /**
-   * Validate forEach and forEachOrNull expressions.
+   * Validate forEach, forEachOrNull, and repeat expressions.
+   * Ensures mutual exclusivity between these iteration directives.
    */
   private static validateSelectExpressions(select: UnvalidatedSelect): void {
     if (select.forEach && typeof select.forEach !== "string") {
@@ -142,6 +143,49 @@ export class ViewDefinitionParser {
     if (select.forEachOrNull && typeof select.forEachOrNull !== "string") {
       throw new TypeError(
         "forEachOrNull must be a string FHIRPath expression.",
+      );
+    }
+
+    this.validateRepeatExpression(select.repeat);
+    this.validateIterationDirectiveMutualExclusivity(select);
+  }
+
+  /**
+   * Validate that repeat is an array of non-empty strings.
+   */
+  private static validateRepeatExpression(repeat: unknown): void {
+    if (repeat === undefined) {
+      return;
+    }
+    if (!Array.isArray(repeat)) {
+      throw new TypeError("repeat must be an array of FHIRPath expressions.");
+    }
+    for (const path of repeat) {
+      if (typeof path !== "string" || path.trim().length === 0) {
+        throw new TypeError(
+          "Each repeat path must be a non-empty string FHIRPath expression.",
+        );
+      }
+    }
+  }
+
+  /**
+   * Enforce mutual exclusivity: only one of forEach, forEachOrNull, or repeat.
+   */
+  private static validateIterationDirectiveMutualExclusivity(
+    select: UnvalidatedSelect,
+  ): void {
+    const directiveCount = [
+      select.forEach,
+      select.forEachOrNull,
+      select.repeat,
+    ].filter((d) => d !== undefined).length;
+
+    if (directiveCount > 1) {
+      throw new Error(
+        "A select element cannot have multiple iteration directives " +
+          "(forEach, forEachOrNull, repeat) at the same level. " +
+          "Use nested select to combine them.",
       );
     }
   }
