@@ -9,6 +9,9 @@ jobs:
     name: Publish to npm
     runs-on: ubuntu-latest
     environment: npm
+    permissions: 
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout code
@@ -29,8 +32,6 @@ jobs:
 
       - name: Publish to npm
         run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-report:
     name: Publish test report to GitHub Pages
