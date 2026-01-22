@@ -71,6 +71,7 @@ jobs:
 
       - name: Publish to npm
         run: npm publish
+        continue-on-error: true
 
   publish-report:
     name: Publish test report to GitHub Pages
