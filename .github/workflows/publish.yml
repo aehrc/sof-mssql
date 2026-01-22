@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -29,6 +31,43 @@ jobs:
 
       - name: Build project
         run: npm run build
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Install SQL Server command-line tools
+        run: |
+          curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
+          curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18 unixodbc-dev
+          echo "/opt/mssql-tools18/bin" >> $GITHUB_PATH
+
+      - name: Create test database
+        run: sqlcmd -S localhost -U sa -P "${SA_PASSWORD}" -C -Q "CREATE DATABASE testdb"
+        env:
+          SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
+
+      - name: Run tests
+        run: npm run test
+        continue-on-error: true
+        env:
+          SQLONFHIR_TEST_PATH: ./sqlonfhir/tests
+          MSSQL_HOST: localhost
+          MSSQL_DATABASE: testdb
+          MSSQL_USER: sa
+          MSSQL_PASSWORD: ${{ secrets.SA_PASSWORD }}
+
+      - name: Upload test report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ matrix.sql-version }}
+          path: out/test-report.json
+          retention-days: 30
 
       - name: Publish to npm
         run: npm publish
