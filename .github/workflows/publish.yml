@@ -6,16 +6,12 @@ on:
     types: [published]
 
 jobs:
-  publish:
-    name: Publish to npm
+  test:
+    name: Build and test
     runs-on: ubuntu-latest
-    environment: npm
     strategy:
       matrix:
         sql-version: ["2017-latest", "2019-latest", "2022-latest"]
-    permissions:
-      id-token: write
-      contents: read
 
     services:
       sqlserver:
@@ -86,6 +82,31 @@ jobs:
           name: test-report-${{ matrix.sql-version }}
           path: out/test-report.json
           retention-days: 30
+
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: test
+    environment: npm
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
 
       - name: Publish to npm
         run: npm publish
