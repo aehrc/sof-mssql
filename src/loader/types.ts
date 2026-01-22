@@ -20,6 +20,8 @@ export interface DatabaseConfig {
   database: string;
   /** Whether to trust the server certificate. */
   trustServerCertificate?: boolean;
+  /** Request timeout in milliseconds (default: 300000). */
+  requestTimeout?: number;
 }
 
 /**

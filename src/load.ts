@@ -23,6 +23,7 @@ function getDryRunDatabaseConfig(commandOptions: Record<string, unknown>): {
   password: string;
   database: string;
   trustServerCertificate: boolean | undefined;
+  requestTimeout: number | undefined;
 } {
   return {
     host: (commandOptions.host as string | undefined) ?? "localhost",
@@ -33,6 +34,7 @@ function getDryRunDatabaseConfig(commandOptions: Record<string, unknown>): {
     trustServerCertificate: commandOptions.trustServerCertificate as
       | boolean
       | undefined,
+    requestTimeout: commandOptions.requestTimeout as number | undefined,
   };
 }
 
@@ -58,6 +60,7 @@ function buildLoaderOptions(
         trustServerCertificate: commandOptions.trustServerCertificate as
           | boolean
           | undefined,
+        requestTimeout: commandOptions.requestTimeout as number | undefined,
       });
 
   return {
@@ -119,6 +122,12 @@ export function createLoadCommand(): Command {
     .option("--password <password>", "Database password")
     .option("--database <database>", "Database name")
     .option("--trust-server-certificate", "Trust server certificate", false)
+    .option(
+      "--request-timeout <ms>",
+      "Request timeout in milliseconds",
+      parseInt,
+      300000,
+    )
     .option(
       "--pattern <pattern>",
       "File naming pattern (default: {ResourceType}.ndjson)",

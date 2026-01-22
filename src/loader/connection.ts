@@ -23,6 +23,7 @@ export async function createConnectionPool(
     user: config.user,
     password: config.password,
     database: config.database,
+    requestTimeout: config.requestTimeout,
     options: {
       trustServerCertificate: config.trustServerCertificate ?? false,
       // Enable multiple active result sets for parallel operations.
@@ -103,6 +104,12 @@ export function getDatabaseConfigFromEnv(
     overrides?.trustServerCertificate ??
     process.env.MSSQL_TRUST_SERVER_CERTIFICATE === "true";
 
+  const requestTimeout =
+    overrides?.requestTimeout ??
+    (process.env.MSSQL_REQUEST_TIMEOUT
+      ? parseInt(process.env.MSSQL_REQUEST_TIMEOUT, 10)
+      : undefined);
+
   return {
     host,
     port,
@@ -110,5 +117,6 @@ export function getDatabaseConfigFromEnv(
     password,
     database,
     trustServerCertificate,
+    requestTimeout,
   };
 }
