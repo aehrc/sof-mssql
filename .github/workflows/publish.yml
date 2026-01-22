@@ -10,9 +10,27 @@ jobs:
     name: Publish to npm
     runs-on: ubuntu-latest
     environment: npm
+    strategy:
+      matrix:
+        sql-version: ["2017-latest", "2019-latest", "2022-latest"]
     permissions:
       id-token: write
       contents: read
+
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:${{ matrix.sql-version }}
+        env:
+          SA_PASSWORD: ${{ secrets.SA_PASSWORD }}
+          ACCEPT_EULA: Y
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "timeout 1 bash -c 'cat < /dev/null > /dev/tcp/localhost/1433'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 10s
 
     steps:
       - name: Checkout code
