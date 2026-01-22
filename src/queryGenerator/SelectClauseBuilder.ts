@@ -155,31 +155,13 @@ export class SelectClauseBuilder {
       );
     }
 
-    // Handle nested selects within the repeat.
-    if (select.select) {
-      for (const nestedSelect of select.select) {
-        if (this.isForEachSelect(nestedSelect) && forEachContextMap) {
-          // Nested forEach uses its own context (source updated to use repeat CTE).
-          const nestedContext = forEachContextMap.get(nestedSelect);
-          if (nestedContext && nestedSelect.column) {
-            this.addColumnsToList(
-              nestedSelect.column,
-              columnParts,
-              nestedContext,
-            );
-          }
-        } else if (nestedSelect.column) {
-          // Non-forEach nested selects use the repeat context.
-          this.addColumnsToList(
-            nestedSelect.column,
-            columnParts,
-            repeatContext.transpilerContext,
-          );
-        }
-      }
-    }
+    this.addNestedSelectColumnsForRepeat(
+      select,
+      columnParts,
+      repeatContext.transpilerContext,
+      forEachContextMap,
+    );
 
-    // Handle unionAll within the repeat (if applicable).
     this.addRepeatUnionAllColumns(
       select,
       unionChoice,
@@ -187,6 +169,44 @@ export class SelectClauseBuilder {
       repeatContext.transpilerContext,
       repeatContextMap,
     );
+  }
+
+  /**
+   * Add nested select columns for a repeat select.
+   *
+   * Nested forEach selects use their own context, while other nested selects
+   * use the repeat context.
+   */
+  private addNestedSelectColumnsForRepeat(
+    select: ViewDefinitionSelect,
+    columnParts: string[],
+    repeatTranspilerContext: TranspilerContext,
+    forEachContextMap?: Map<ViewDefinitionSelect, TranspilerContext>,
+  ): void {
+    if (!select.select) {
+      return;
+    }
+
+    for (const nestedSelect of select.select) {
+      if (this.isForEachSelect(nestedSelect) && forEachContextMap) {
+        // Nested forEach uses its own context (source updated to use repeat CTE).
+        const nestedContext = forEachContextMap.get(nestedSelect);
+        if (nestedContext && nestedSelect.column) {
+          this.addColumnsToList(
+            nestedSelect.column,
+            columnParts,
+            nestedContext,
+          );
+        }
+      } else if (nestedSelect.column) {
+        // Non-forEach nested selects use the repeat context.
+        this.addColumnsToList(
+          nestedSelect.column,
+          columnParts,
+          repeatTranspilerContext,
+        );
+      }
+    }
   }
 
   /**
