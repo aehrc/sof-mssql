@@ -11,11 +11,7 @@
  * contain dots in practice; not a blocker.
  */
 
-import type {
-  CteDefinition,
-  PartitionKey,
-  ScalarColumn,
-} from "./types.js";
+import type { CteDefinition, PartitionKey, ScalarColumn } from "./types.js";
 
 interface OpenJsonChain {
   applyClauses: string;

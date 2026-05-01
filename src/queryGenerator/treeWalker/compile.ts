@@ -87,9 +87,7 @@ function buildRootContext(
  * Mirrors the behaviour of QueryGenerator.collectAllColumns so the public
  * TranspilationResult.columns shape is unchanged.
  */
-function collectColumnMetadata(
-  selects: ViewDefinitionSelect[],
-): ColumnInfo[] {
+function collectColumnMetadata(selects: ViewDefinitionSelect[]): ColumnInfo[] {
   const out: ColumnInfo[] = [];
   for (const select of selects) {
     if (select.column) {

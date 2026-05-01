@@ -27,7 +27,7 @@ export function walkForEach(
   deps: ForEachDeps,
 ): Fragment {
   const isOrNull = node.forEachOrNull !== undefined;
-  const rawPath = (node.forEach ?? node.forEachOrNull) ?? "";
+  const rawPath = node.forEach ?? node.forEachOrNull ?? "";
   const applyType = isOrNull ? "OUTER APPLY" : "CROSS APPLY";
   const alias = freshAlias(ctx, "forEach");
 
