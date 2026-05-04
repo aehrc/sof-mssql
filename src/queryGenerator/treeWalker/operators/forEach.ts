@@ -15,6 +15,7 @@ import type { ViewDefinitionSelect } from "../../../types.js";
 import type { PathParser } from "../../PathParser.js";
 import { freshAlias } from "../aliasGenerator.js";
 import type { Context, Fragment, PartitionKey } from "../types.js";
+import { SQL_NVARCHAR_4000 } from "../types.js";
 
 interface ForEachDeps {
   pathParser: PathParser;
@@ -71,7 +72,7 @@ function buildInnerCtx(
   const innerKey: PartitionKey = {
     name: `${alias}_key`,
     sqlExpr: `${alias}.[key]`,
-    sqlType: "NVARCHAR(4000)",
+    sqlType: SQL_NVARCHAR_4000,
   };
   return {
     ...ctx,

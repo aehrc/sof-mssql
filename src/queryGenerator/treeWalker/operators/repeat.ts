@@ -12,6 +12,7 @@ import type { ViewDefinitionSelect } from "../../../types.js";
 import { freshAlias } from "../aliasGenerator.js";
 import { buildRepeatCte } from "../cteTemplates.js";
 import type { Context, Fragment, PartitionKey } from "../types.js";
+import { SQL_NVARCHAR_MAX } from "../types.js";
 
 export interface RepeatDeps {
   schemaName: string;
@@ -80,7 +81,7 @@ function buildRepeatInnerCtx(
   const newKey: PartitionKey = {
     name: `${cteAlias}_path`,
     sqlExpr: `${cteAlias}.__path`,
-    sqlType: "NVARCHAR(MAX)",
+    sqlType: SQL_NVARCHAR_MAX,
   };
   const innerTranspilerCtx: TranspilerContext = {
     ...ctx.transpilerCtx,

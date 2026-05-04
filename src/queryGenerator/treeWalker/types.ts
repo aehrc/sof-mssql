@@ -8,6 +8,10 @@
 
 import type { TranspilerContext } from "../../fhirpath/transpiler.js";
 
+export const SQL_INT = "INT";
+export const SQL_NVARCHAR_4000 = "NVARCHAR(4000)";
+export const SQL_NVARCHAR_MAX = "NVARCHAR(MAX)";
+
 export type NodeKind =
   | "ColumnsOnly"
   | "Group"

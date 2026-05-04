@@ -17,7 +17,12 @@ import { PathParser } from "../PathParser.js";
 import { WhereClauseBuilder } from "../WhereClauseBuilder.js";
 import { renderRoot } from "./render.js";
 import type { Context, PartitionKey } from "./types.js";
+import { SQL_INT } from "./types.js";
 import { makeWalker } from "./walker.js";
+
+const columnGenerator = new ColumnExpressionGenerator();
+const pathParser = new PathParser();
+const whereClauseBuilder = new WhereClauseBuilder();
 
 export interface CompileOptions {
   tableName: string;
@@ -32,10 +37,6 @@ export function compileViewDefinition(
 ): TranspilationResult {
   const resourceAlias = options.transpilerCtx.resourceAlias;
   const ctx = buildRootContext(resourceAlias, options.transpilerCtx);
-
-  const columnGenerator = new ColumnExpressionGenerator();
-  const whereClauseBuilder = new WhereClauseBuilder();
-  const pathParser = new PathParser();
 
   const rootNode: ViewDefinitionSelect = { select: viewDef.select };
   const walk = makeWalker({
@@ -65,7 +66,7 @@ function buildRootContext(
   const idKey: PartitionKey = {
     name: "id",
     sqlExpr: `[${resourceAlias}].[id]`,
-    sqlType: "INT",
+    sqlType: SQL_INT,
   };
   return {
     resourceAlias,
