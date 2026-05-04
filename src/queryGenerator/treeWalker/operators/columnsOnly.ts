@@ -31,10 +31,8 @@ export function walkColumnsOnly(
     : [];
   return {
     ctes: [],
-    fromClause: "",
     fromExtensions: "",
     columns,
     partitionKeys: ctx.partitionKeys,
-    rowOrigin: "row",
   };
 }

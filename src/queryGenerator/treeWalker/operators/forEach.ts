@@ -51,7 +51,6 @@ export function walkForEach(
   return {
     ...inner,
     fromExtensions: applyClause + inner.fromExtensions,
-    nullableHere: isOrNull || inner.nullableHere,
   };
 }
 

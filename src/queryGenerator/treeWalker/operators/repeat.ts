@@ -37,7 +37,6 @@ export function walkRepeat(
     source: ctx.source,
     fromClause: `FROM ${tableRef} AS [${ctx.resourceAlias}]`,
     ancestorApplies: ctx.ancestorApplies,
-    scalarColumns: ctx.scalarColumns,
     partitionKeys: ctx.partitionKeys,
     resourcePredicate: null, // Resource-level WHERE goes in the outer SELECT.
   });
@@ -53,15 +52,11 @@ export function walkRepeat(
 
   return {
     ctes: [cte, ...inner.ctes],
-    fromClause: "",
     // Join the CTE FIRST so subsequent applies/joins inside the repeat
     // (which reference `<cteAlias>.item_json`) have the alias in scope.
     fromExtensions: joinClause + inner.fromExtensions,
     columns: inner.columns,
     partitionKeys: innerCtx.partitionKeys,
-    rowOrigin: "set",
-    fromAlias: cteAlias,
-    nullableHere: inner.nullableHere,
   };
 }
 
@@ -100,7 +95,6 @@ function buildRepeatInnerCtx(
     ...ctx,
     source: `${cteAlias}.item_json`,
     partitionKeys: [...ctx.partitionKeys, newKey],
-    scalarColumns: [], // Already baked into the CTE.
     ancestorApplies: ctx.ancestorApplies + joinClause,
     transpilerCtx: innerTranspilerCtx,
   };

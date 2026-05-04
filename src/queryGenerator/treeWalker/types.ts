@@ -3,8 +3,7 @@
  *
  * Each select-tree node produces a Fragment; sibling fragments are merged
  * via partition-key joins. Context threads through descent, accumulating
- * the current JSON source, partition keys, and scalar columns to bake into
- * any enclosed recursive CTE.
+ * the current JSON source, partition keys, and APPLY chain.
  */
 
 import type { TranspilerContext } from "../../fhirpath/transpiler.js";
@@ -26,13 +25,6 @@ export interface PartitionKey {
   sqlType: string;
 }
 
-export interface ScalarColumn {
-  /** Bracketed identifier, e.g. "[groupLinkId]". */
-  name: string;
-  /** SQL expression evaluated in the outer scope, baked into a CTE anchor. */
-  sqlExpr: string;
-}
-
 export interface ProjectedColumn {
   /** Bracketed identifier as it appears in the final SELECT list. */
   name: string;
@@ -45,16 +37,12 @@ export interface CteDefinition {
   body: string;
 }
 
-export type RowOrigin = "row" | "set";
-
 export interface Context {
   resourceAlias: string;
   /** Current JSON source expression, e.g. "r.json", "forEach_0.value". */
   source: string;
   /** Ordered, monotonically appended as the walker descends. */
   partitionKeys: PartitionKey[];
-  /** Columns lexically captured above; baked into the next enclosed CTE anchor. */
-  scalarColumns: ScalarColumn[];
   /**
    * CROSS/OUTER APPLY chain accumulated above this point, needed so any
    * enclosed Repeat CTE anchor can reach `ctx.source`. Each element starts
@@ -71,8 +59,6 @@ export interface Context {
 
 export interface Fragment {
   ctes: CteDefinition[];
-  /** "FROM <ref>" or "" if the fragment inherits its FROM from the caller. */
-  fromClause: string;
   /**
    * Ordered sequence of FROM-clause extensions: a mix of CROSS/OUTER APPLY
    * and INNER/LEFT/FULL OUTER JOIN clauses, each prefixed by "\n". Order is
@@ -84,10 +70,4 @@ export interface Fragment {
   columns: ProjectedColumn[];
   /** Keys exposed by this fragment for use by sibling joins. */
   partitionKeys: PartitionKey[];
-  /** "set" = fragment exposes a CTE that participates in a join. */
-  rowOrigin: RowOrigin;
-  /** Alias usable as a join anchor when rowOrigin === "set". */
-  fromAlias?: string;
-  /** True if this fragment introduces a forEachOrNull (drives chooseJoinType). */
-  nullableHere?: boolean;
 }

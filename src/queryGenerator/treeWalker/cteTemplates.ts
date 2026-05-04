@@ -11,7 +11,7 @@
  * contain dots in practice; not a blocker.
  */
 
-import type { CteDefinition, PartitionKey, ScalarColumn } from "./types.js";
+import type { CteDefinition, PartitionKey } from "./types.js";
 
 interface OpenJsonChain {
   applyClauses: string;
@@ -28,8 +28,6 @@ export interface BuildRepeatCteArgs {
   fromClause: string;
   /** CROSS/OUTER APPLY chain inherited from ancestors (each starts with "\n"). */
   ancestorApplies: string;
-  /** Columns lexically captured above the repeat; baked into the anchor. */
-  scalarColumns: ScalarColumn[];
   /** Partition keys propagated through anchor and recursive members. */
   partitionKeys: PartitionKey[];
   /** Resource-level WHERE applied to the anchor (or null to omit). */
@@ -51,18 +49,11 @@ function buildAnchorMember(args: BuildRepeatCteArgs): string {
     source,
     fromClause,
     ancestorApplies,
-    scalarColumns,
     partitionKeys,
     resourcePredicate,
   } = args;
-  const keyProj = partitionKeys
+  const projLines = partitionKeys
     .map((k) => `${k.sqlExpr} AS [${k.name}]`)
-    .join(",\n    ");
-  const scalarProj = scalarColumns
-    .map((s) => `${s.sqlExpr} AS ${s.name}`)
-    .join(",\n    ");
-  const projLines = [keyProj, scalarProj]
-    .filter((s) => s.length > 0)
     .join(",\n    ");
   const chain = buildOpenJsonChain(source, paths[0], "anchor");
   const wherePart = resourcePredicate ? `\n  ${resourcePredicate}` : "";
@@ -81,16 +72,8 @@ function buildRecursiveMember(
   path: string,
   index: number,
 ): string {
-  const { cteAlias, scalarColumns, partitionKeys } = args;
-  const propagatedKeyRefs = partitionKeys
-    .map((k) => `cte.[${k.name}]`)
-    .join(", ");
-  const propagatedScalarRefs = scalarColumns
-    .map((s) => `cte.${s.name}`)
-    .join(", ");
-  const head = [propagatedKeyRefs, propagatedScalarRefs]
-    .filter((s) => s.length > 0)
-    .join(", ");
+  const { cteAlias, partitionKeys } = args;
+  const head = partitionKeys.map((k) => `cte.[${k.name}]`).join(", ");
   const chain = buildOpenJsonChain("cte.item_json", path, `child_${index}`);
   return `  SELECT
     ${head},

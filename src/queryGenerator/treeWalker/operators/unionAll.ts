@@ -67,12 +67,9 @@ function buildUnionAllFragment(
   }));
   return {
     ctes: allCtes,
-    fromClause: "",
     fromExtensions: `\nCROSS APPLY ${unionDerivedTable}`,
     columns: uaColumns,
     partitionKeys: ctx.partitionKeys,
-    rowOrigin: "row",
-    nullableHere: branchFragments.some((f) => f.nullableHere),
   };
 }
 
@@ -86,11 +83,9 @@ function collectOuterSiblings(
   if (node.column && node.column.length > 0) {
     out.push({
       ctes: [],
-      fromClause: "",
       fromExtensions: "",
       columns: projectColumns(node.column, ctx, deps.columnGenerator),
       partitionKeys: ctx.partitionKeys,
-      rowOrigin: "row",
     });
   }
   if (node.select) {

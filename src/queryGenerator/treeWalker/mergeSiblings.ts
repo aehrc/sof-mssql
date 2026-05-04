@@ -16,11 +16,9 @@ export function mergeSiblings(fragments: Fragment[], ctx: Context): Fragment {
   if (fragments.length === 0) {
     return {
       ctes: [],
-      fromClause: "",
       fromExtensions: "",
       columns: [],
       partitionKeys: ctx.partitionKeys,
-      rowOrigin: "row",
     };
   }
 
@@ -29,7 +27,6 @@ export function mergeSiblings(fragments: Fragment[], ctx: Context): Fragment {
   const ctes = fragments.flatMap((f) => f.ctes);
   const fromExtensions = fragments.map((f) => f.fromExtensions).join("");
   const columns = fragments.flatMap((f) => f.columns);
-  const nullableHere = fragments.some((f) => f.nullableHere);
 
   // Row siblings + zero or more set siblings: each set fragment already carries
   // its own INNER JOIN to its CTE, joined on the partition keys it inherited
@@ -37,11 +34,8 @@ export function mergeSiblings(fragments: Fragment[], ctx: Context): Fragment {
   // keep their references to `r` valid.
   return {
     ctes,
-    fromClause: "",
     fromExtensions,
     columns,
     partitionKeys: ctx.partitionKeys,
-    rowOrigin: "row",
-    nullableHere,
   };
 }

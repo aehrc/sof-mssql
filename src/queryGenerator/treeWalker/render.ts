@@ -35,10 +35,7 @@ export function renderRoot(
     .map((c) => `${c.sqlExpr} AS [${c.name}]`)
     .join(",\n  ");
 
-  const fromClause =
-    fragment.fromClause !== ""
-      ? fragment.fromClause
-      : `FROM ${tableRef} AS [${resourceAlias}]`;
+  const fromClause = `FROM ${tableRef} AS [${resourceAlias}]`;
 
   const whereClause = options.whereClauseBuilder.buildWhereClause(
     viewDef.resource,

@@ -74,7 +74,6 @@ function buildRootContext(
     // pattern-matches on the source string).
     source: `${resourceAlias}.json`,
     partitionKeys: [idKey],
-    scalarColumns: [],
     ancestorApplies: "",
     nullable: false,
     cteCounter: { value: 0 },

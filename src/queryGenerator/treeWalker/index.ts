@@ -1,5 +1,5 @@
 /**
- * Tree-walker query generator (greenfield, gated by USE_TREE_WALKER).
+ * Tree-walker query generator.
  */
 
 export { compileViewDefinition } from "./compile.js";
@@ -13,9 +13,7 @@ export type {
   Context,
   Fragment,
   PartitionKey,
-  ScalarColumn,
   ProjectedColumn,
   CteDefinition,
   NodeKind,
-  RowOrigin,
 } from "./types.js";

@@ -33,11 +33,9 @@ export function walkGroup(
   if (children.length === 0) {
     return {
       ctes: [],
-      fromClause: "",
       fromExtensions: "",
       columns: [],
       partitionKeys: ctx.partitionKeys,
-      rowOrigin: "row",
     };
   }
 
