@@ -14,8 +14,12 @@ import type { TranspilerContext } from "../../../fhirpath/transpiler.js";
 import type { ViewDefinitionSelect } from "../../../types.js";
 import type { PathParser } from "../../PathParser.js";
 import { freshAlias } from "../aliasGenerator.js";
-import type { Context, Fragment, PartitionKey } from "../types.js";
-import { SQL_NVARCHAR_4000 } from "../types.js";
+import {
+  type Context,
+  type Fragment,
+  type PartitionKey,
+  SQL_NVARCHAR_4000,
+} from "../types.js";
 
 interface ForEachDeps {
   pathParser: PathParser;

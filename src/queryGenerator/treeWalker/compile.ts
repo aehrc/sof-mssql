@@ -16,8 +16,7 @@ import { ColumnExpressionGenerator } from "../ColumnExpressionGenerator.js";
 import { PathParser } from "../PathParser.js";
 import { WhereClauseBuilder } from "../WhereClauseBuilder.js";
 import { renderRoot } from "./render.js";
-import type { Context, PartitionKey } from "./types.js";
-import { SQL_INT } from "./types.js";
+import { type Context, type PartitionKey, SQL_INT } from "./types.js";
 import { makeWalker } from "./walker.js";
 
 const columnGenerator = new ColumnExpressionGenerator();
