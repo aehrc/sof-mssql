@@ -30,6 +30,19 @@ export interface CompileOptions {
   transpilerCtx: TranspilerContext;
 }
 
+/**
+ * Compiles a ViewDefinition into a T-SQL query string and column metadata.
+ *
+ * Wraps `viewDef.select` as a synthetic root Group node, walks the entire
+ * select tree to produce a Fragment, then renders that Fragment into a
+ * complete T-SQL statement (WITH … SELECT … FROM … WHERE).
+ *
+ * @param viewDef - The parsed ViewDefinition whose `select` tree is compiled.
+ * @param options - Compilation options including table/schema names, an
+ *   optional test-isolation ID, and the FHIRPath transpiler context.
+ * @returns A `TranspilationResult` containing the generated SQL string and
+ *   an ordered array of column metadata matching the view's output shape.
+ */
 export function compileViewDefinition(
   viewDef: ViewDefinition,
   options: CompileOptions,

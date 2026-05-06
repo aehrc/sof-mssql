@@ -3,7 +3,7 @@
  *
  * The CTE projects the current partition keys and any baked scalar columns
  * plus a content-derived `__path` for stable identity across re-evaluations.
- * The Fragment's `joins` is an INNER JOIN to the CTE on the partition key
+ * The Fragment's `fromExtensions` is an INNER JOIN to the CTE on the partition key
  * `[id]`; sibling-level composite-key joins are added by `mergeSiblings`.
  */
 
@@ -23,6 +23,35 @@ export interface RepeatDeps {
   tableName: string;
 }
 
+/**
+ * Walker for Repeat nodes — emits a recursive CTE and returns a set Fragment.
+ *
+ * Generates a `WITH RECURSIVE`-style CTE (via `buildRepeatCte`) whose anchor
+ * member starts at the resource root and whose recursive members re-expand
+ * each element's `item_json` using the same path list.  The CTE accumulates a
+ * `__path` string for stable per-element identity across recursion levels.
+ *
+ * The returned Fragment contains the CTE plus an `INNER JOIN` to it in
+ * `fromExtensions`; the join is keyed on all current partition keys so that
+ * only rows belonging to the enclosing resource (and any ancestor forEach)
+ * are included.  The inner context updates `source` to `<cteAlias>.item_json`
+ * and appends a new `<cteAlias>_path` partition key so that nested operators
+ * can further partition the result set.
+ *
+ * @param node - The Repeat select node; `node.repeat` supplies the ordered
+ *   list of FHIRPath strings used as the anchor and recursive paths.
+ * @param ctx - The current walker context; the inner context is derived from
+ *   it by updating `source`, `partitionKeys`, `ancestorApplies`, and
+ *   `transpilerCtx`.
+ * @param walk - The recursive walk function used to visit the inner sub-tree
+ *   (`column`, `select`, `unionAll`) in the repeat-item context.
+ * @param deps - Schema and table name needed to construct the resource FROM
+ *   clause inside the CTE anchor.
+ * @returns A Fragment whose `ctes` list begins with the recursive CTE,
+ *   `fromExtensions` begins with the INNER JOIN to that CTE, and `columns`
+ *   are those produced by the inner walk.
+ * @throws {Error} When `node.repeat` is absent or empty.
+ */
 export function walkRepeat(
   node: ViewDefinitionSelect,
   ctx: Context,

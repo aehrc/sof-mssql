@@ -25,6 +25,31 @@ interface ForEachDeps {
   pathParser: PathParser;
 }
 
+/**
+ * Walker for ForEach and ForEachOrNull nodes.
+ *
+ * Emits a `CROSS APPLY` (or `OUTER APPLY` for `forEachOrNull`) clause that
+ * iterates over a JSON array identified by the node's FHIRPath expression.
+ * Updates `ctx.source`, `ctx.transpilerCtx`, and `ctx.partitionKeys` so that
+ * child nodes project columns relative to each iteration value, then walks
+ * the child sub-tree (`column`, `select`, `unionAll`) in that inner context.
+ * The apply clause is prepended to the inner Fragment's `fromExtensions`.
+ *
+ * Path features handled via `PathParser`: `.where()` filters, `.first()`
+ * selectors, array indexing, and multi-segment array flattening (nested
+ * `CROSS APPLY OPENJSON` chains).
+ *
+ * @param node - The ForEach or ForEachOrNull select node.  `node.forEach` or
+ *   `node.forEachOrNull` supplies the FHIRPath expression to iterate.
+ * @param ctx - The current walker context; the inner context is derived from
+ *   it by updating `source`, `partitionKeys`, `ancestorApplies`, `nullable`,
+ *   and `transpilerCtx`.
+ * @param walk - The recursive walk function used to visit the inner sub-tree.
+ * @param deps - Dependencies containing the `PathParser` used to parse and
+ *   decompose the FHIRPath expression.
+ * @returns A Fragment whose `fromExtensions` begins with the generated APPLY
+ *   clause followed by any extensions produced by the inner walk.
+ */
 export function walkForEach(
   node: ViewDefinitionSelect,
   ctx: Context,

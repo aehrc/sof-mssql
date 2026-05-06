@@ -1,7 +1,7 @@
 /**
  * Renders a root Fragment into the final T-SQL statement:
  *
- *   WITH <ctes> SELECT <cols> FROM <root> <applies> <joins> WHERE <pred>
+ *   WITH <ctes> SELECT <cols> FROM <root> <fromExtensions> WHERE <pred>
  */
 
 import type { TranspilerContext } from "../../fhirpath/transpiler.js";
@@ -18,6 +18,21 @@ export interface RenderOptions {
   transpilerCtx: TranspilerContext;
 }
 
+/**
+ * Renders a root Fragment into the final T-SQL statement.
+ *
+ * Assembles the optional `WITH <ctes>` preamble, the `SELECT <cols>` list,
+ * the `FROM <table>` clause, any `fromExtensions` (APPLY / JOIN chains), and
+ * the optional `WHERE` predicate built by `WhereClauseBuilder`.
+ *
+ * @param fragment - The root Fragment produced by walking the select tree.
+ * @param viewDef - The ViewDefinition supplying the resource type, WHERE
+ *   predicates, and other metadata needed to construct the WHERE clause.
+ * @param options - Render options including table/schema names, resource alias,
+ *   optional test-isolation ID, the where-clause builder, and the transpiler
+ *   context.
+ * @returns The complete T-SQL query string ready for execution.
+ */
 export function renderRoot(
   fragment: Fragment,
   viewDef: ViewDefinition,

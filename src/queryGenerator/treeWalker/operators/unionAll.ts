@@ -30,6 +30,37 @@ export interface UnionAllDeps {
   columnGenerator: ColumnExpressionGenerator;
 }
 
+/**
+ * Walker for UnionAll nodes.
+ *
+ * Walks each branch of `node.unionAll` in the current context and assembles
+ * them into a `CROSS APPLY (...) AS ua_<n>` derived table where each branch
+ * contributes a `SELECT … FROM (SELECT 1 AS _) AS _seed …` statement joined
+ * by `UNION ALL`.  Branch columns are aligned positionally to branch[0]'s
+ * names, satisfying the SoF spec requirement that all branches produce the
+ * same column names and types.
+ *
+ * CTEs from any branch (e.g. produced by enclosed Repeat nodes) bubble up
+ * into the returned Fragment's `ctes` list so they appear in the top-level
+ * `WITH` clause.
+ *
+ * If the same node also carries `column[]` or `select[]` alongside
+ * `unionAll`, those are emitted as outer siblings in the enclosing SELECT
+ * scope and merged with the union fragment via `mergeSiblings`.
+ *
+ * @param node - The UnionAll select node; `node.unionAll` must be a non-empty
+ *   array of branch select nodes.
+ * @param ctx - The current walker context, passed unchanged to every branch
+ *   and to any sibling column/select processing.
+ * @param walk - The recursive walk function used to visit each branch and any
+ *   outer sibling select nodes.
+ * @param deps - Dependencies containing the `ColumnExpressionGenerator` used
+ *   to project any outer sibling `column[]` entries.
+ * @returns A Fragment whose `fromExtensions` contains the `CROSS APPLY`
+ *   derived-table clause, `ctes` aggregates all branch CTEs, and `columns`
+ *   contains the outer projection (plus any sibling columns).
+ * @throws {Error} When `node.unionAll` is empty.
+ */
 export function walkUnionAll(
   node: ViewDefinitionSelect,
   ctx: Context,
@@ -97,9 +128,11 @@ function collectOuterSiblings(
 /**
  * Renders one branch's SELECT inside the unionAll derived table.
  *
- * The seed `(SELECT 1 AS _) AS _seed_X` ensures the branch always has a
+ * The seed `(SELECT 1 AS _) AS _seed` ensures the branch always has a
  * FROM clause to attach its CROSS/OUTER APPLY chain to, and keeps the SQL
- * uniform whether the branch has operators or not.
+ * uniform whether the branch has operators or not. No unique suffix is
+ * needed because each SELECT in a UNION ALL has its own independent FROM
+ * scope — `_seed` in one branch cannot collide with `_seed` in another.
  *
  * Columns are re-aliased to branch[0]'s names so the outer projection by
  * name works for every branch row.

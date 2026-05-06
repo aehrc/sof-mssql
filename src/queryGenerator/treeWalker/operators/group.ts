@@ -12,6 +12,27 @@ import { mergeSiblings } from "../mergeSiblings.js";
 import type { Context, Fragment } from "../types.js";
 import { projectColumns, walkColumnsOnly } from "./columnsOnly.js";
 
+/**
+ * Walker for Group nodes — visits each child select and merges their Fragments.
+ *
+ * If the node has both `column[]` and `select[]`, the columns are emitted as
+ * an implicit first ColumnsOnly child so they appear before the child select
+ * projections in lexical order.  All children are walked with the same
+ * unmodified `ctx`; their Fragments are merged via `mergeSiblings`.
+ *
+ * Returns an empty Fragment when the node has neither `column[]` nor
+ * `select[]` children.
+ *
+ * @param node - The Group select node, which may carry `column[]`, `select[]`,
+ *   or both.
+ * @param ctx - The current walker context passed unchanged to every child.
+ * @param walk - The recursive walk function used to visit each child select
+ *   node.
+ * @param columnGenerator - The generator forwarded to `walkColumnsOnly` when
+ *   the node also carries inline `column[]` entries.
+ * @returns A merged Fragment whose columns, CTEs, and FROM extensions are the
+ *   ordered union of all child Fragments.
+ */
 export function walkGroup(
   node: ViewDefinitionSelect,
   ctx: Context,

@@ -1,17 +1,31 @@
 /**
  * Merges sibling fragments produced by walking children of a Group.
  *
- * Row-shaped siblings compose horizontally — APPLY chains and columns
- * concatenate. Set-shaped siblings (Repeat CTEs) contribute INNER JOIN
- * clauses to their CTEs; the outer FROM remains the resource table so row
- * siblings can reference its scope.
- *
- * For multiple set siblings (Step 5 onward), the partition-key composite
- * join logic ensures rows align correctly within the enclosing scope.
+ * Flattens CTE lists, concatenates `fromExtensions` strings and `columns`
+ * arrays in order, and passes `partitionKeys` through unchanged from `ctx`.
  */
 
 import type { Context, Fragment } from "./types.js";
 
+/**
+ * Merges sibling Fragments produced by walking children of a Group node.
+ *
+ * Flattens each fragment's `ctes` list, concatenates `fromExtensions` strings
+ * (preserving order so aliases are introduced before they are referenced), and
+ * concatenates `columns` arrays in lexical order.  `partitionKeys` are passed
+ * through unchanged from `ctx` — siblings share the same partition scope.
+ *
+ * Returns an empty Fragment (no CTEs, no extensions, no columns) when
+ * `fragments` is empty, and returns the sole fragment unchanged when only one
+ * is provided.
+ *
+ * @param fragments - Ordered array of sibling Fragments to merge.
+ * @param ctx - The context of the parent Group node, used to supply
+ *   `partitionKeys` for the merged result and as the base for the empty-array
+ *   case.
+ * @returns A single merged Fragment whose columns, CTEs, and FROM extensions
+ *   are the ordered union of all input fragments.
+ */
 export function mergeSiblings(fragments: Fragment[], ctx: Context): Fragment {
   if (fragments.length === 0) {
     return {

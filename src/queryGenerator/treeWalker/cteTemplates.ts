@@ -34,6 +34,26 @@ export interface BuildRepeatCteArgs {
   resourcePredicate: string | null;
 }
 
+/**
+ * Builds the SQL body of the recursive CTE used by the Repeat operator.
+ *
+ * Produces a `CteDefinition` whose body is an anchor SELECT followed by one
+ * `UNION ALL` recursive SELECT per path in `args.paths`.  The anchor starts
+ * at the resource root and expands each array element via `OPENJSON`; each
+ * recursive member re-expands from the CTE's own `item_json` column,
+ * appending `.[key]` to the `__path` accumulator for stable per-element
+ * identity.  Multi-segment paths (e.g. `"a.b.c"`) produce a chain of nested
+ * `CROSS APPLY OPENJSON` calls.
+ *
+ * @param args - Parameters controlling CTE generation: the CTE alias, the
+ *   FHIRPath repeat paths, the JSON source expression for the anchor, the
+ *   resource table FROM clause, any ancestor APPLY chain, the partition keys
+ *   to propagate, and an optional resource-level WHERE predicate for the
+ *   anchor.
+ * @returns A `CteDefinition` with `alias` set to `args.cteAlias` and `body`
+ *   containing the full anchor + recursive SQL (without the outer
+ *   `alias AS (...)` wrapper, which `renderRoot` adds).
+ */
 export function buildRepeatCte(args: BuildRepeatCteArgs): CteDefinition {
   const anchor = buildAnchorMember(args);
   const recBlocks = args.paths.map((p, i) => buildRecursiveMember(args, p, i));
