@@ -5,6 +5,8 @@
  * plus a content-derived `__path` for stable identity across re-evaluations.
  * The Fragment's `fromExtensions` is an INNER JOIN to the CTE on the partition key
  * `[id]`; sibling-level composite-key joins are added by `mergeSiblings`.
+ *
+ * @author John Grimes
  */
 
 import type { TranspilerContext } from "../../../fhirpath/transpiler.js";
@@ -116,12 +118,24 @@ function buildRepeatInnerCtx(
     sqlExpr: `${cteAlias}.__path`,
     sqlType: SQL_NVARCHAR_MAX,
   };
+  // `%rowIndex` inside a repeat is the 0-based position within the flattened
+  // depth-first traversal. The CTE exposes a padded `__order` accumulator whose
+  // lexical order matches pre-order; ROW_NUMBER over it (less one) yields the
+  // index. Partitioning on the ancestor keys captured before the repeat key is
+  // appended (the resource, and any enclosing forEach element) restarts the
+  // sequence per partition. The window lives in the outer SELECT, which already
+  // INNER JOINs the CTE, so the reference is in scope.
+  const partitionCols = ctx.partitionKeys
+    .map((k) => `${cteAlias}.[${k.name}]`)
+    .join(", ");
+  const partitionClause = partitionCols ? `PARTITION BY ${partitionCols} ` : "";
   const innerTranspilerCtx: TranspilerContext = {
     ...ctx.transpilerCtx,
     iterationContext: `${cteAlias}.item_json`,
     currentForEachAlias: cteAlias,
     forEachSource: ctx.source,
     forEachPath: paths.map((p) => `$.${p}`).join(", "),
+    rowIndexExpr: `(ROW_NUMBER() OVER (${partitionClause}ORDER BY ${cteAlias}.__order) - 1)`,
   };
   // Propagate the join into ancestorApplies so any *nested* Repeat builds
   // its CTE anchor with this CTE in scope.

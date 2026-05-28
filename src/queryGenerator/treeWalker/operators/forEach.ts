@@ -8,6 +8,8 @@
  *
  * Path-handling parity is delegated to PathParser (`.where()`, `.first()`,
  * array indexing, multi-segment array flattening).
+ *
+ * @author John Grimes
  */
 
 import type { TranspilerContext } from "../../../fhirpath/transpiler.js";
@@ -97,6 +99,11 @@ function buildInnerCtx(
     currentForEachAlias: alias,
     forEachSource: ctx.source,
     forEachPath: `$.${rawPath}`,
+    // `%rowIndex` resolves to the iterated element's 0-based position, which is
+    // the OPENJSON `[key]` column. For forEachOrNull over an empty collection
+    // the OUTER APPLY yields a single null-padded row whose `[key]` is NULL;
+    // the spec requires `%rowIndex` to be 0 for that row, hence the COALESCE.
+    rowIndexExpr: `COALESCE(CAST(${alias}.[key] AS INT), 0)`,
   };
   const innerKey: PartitionKey = {
     name: `${alias}_key`,

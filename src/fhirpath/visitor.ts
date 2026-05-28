@@ -1,5 +1,7 @@
 /**
  * FHIRPath to T-SQL visitor implementation using ANTLR.
+ *
+ * @author John Grimes
  */
 
 import { AbstractParseTreeVisitor } from "antlr4ts/tree/AbstractParseTreeVisitor";
@@ -55,6 +57,11 @@ export interface TranspilerContext {
   currentForEachAlias?: string; // The OPENJSON table alias (e.g., "forEach_0")
   forEachSource?: string; // The JSON source being iterated (e.g., "r.json")
   forEachPath?: string; // The JSON path being iterated (e.g., "$.name")
+  // The SQL expression yielding the current iteration's 0-based index, used to
+  // resolve the SQL on FHIR `%rowIndex` environment variable. Each iteration
+  // operator (forEach, forEachOrNull, repeat) sets this to the expression that
+  // produces that iteration's position; absent at the resource root.
+  rowIndexExpr?: string;
   testId?: string; // Optional test identifier for parallel test execution
 }
 
@@ -450,6 +457,16 @@ export class FHIRPathToTSqlVisitor
     } else {
       // STRING case - remove quotes
       constantName = ctx.STRING()?.text.slice(1, -1) ?? "";
+    }
+
+    // `%rowIndex` is a built-in SQL on FHIR environment variable holding the
+    // 0-based position of the current element within the active forEach,
+    // forEachOrNull, or repeat iteration. It is reserved, so it is resolved
+    // before the user-defined constants lookup and the "not defined" error, and
+    // a user constant named `rowIndex` cannot shadow it. With no active
+    // iteration (resource root) it resolves to 0.
+    if (constantName === "rowIndex") {
+      return this.context.rowIndexExpr ?? "0";
     }
 
     // Check if the constant is defined in the context

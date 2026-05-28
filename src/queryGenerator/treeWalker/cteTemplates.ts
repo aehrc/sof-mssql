@@ -9,6 +9,8 @@
  * If a JSON object key contains a literal `.`, two distinct nodes could
  * theoretically produce equal `__path` strings. FHIR JSON keys do not
  * contain dots in practice; not a blocker.
+ *
+ * @author John Grimes
  */
 
 import type { CteDefinition, PartitionKey } from "./types.js";
@@ -81,6 +83,7 @@ function buildAnchorMember(args: BuildRepeatCteArgs): string {
   return `  SELECT
     ${projLines},
     CAST(${chain.lastAlias}.[key] AS NVARCHAR(MAX)) AS __path,
+    CAST(${orderSegment(chain.lastAlias)} AS NVARCHAR(MAX)) AS __order,
     ${chain.lastAlias}.value AS item_json,
     0 AS depth
   ${fromClause}${ancestorApplies}
@@ -98,10 +101,23 @@ function buildRecursiveMember(
   return `  SELECT
     ${head},
     cte.__path + '.' + CAST(${chain.lastAlias}.[key] AS NVARCHAR(4000)) AS __path,
+    cte.__order + '.' + ${orderSegment(chain.lastAlias)} AS __order,
     ${chain.lastAlias}.value AS item_json,
     cte.depth + 1
   FROM ${cteAlias} AS cte
   ${chain.applyClauses}`;
+}
+
+/**
+ * Builds one segment of the `__order` accumulator: the element's `[key]`
+ * zero-padded to a fixed width so that lexical ordering of the `.`-joined
+ * order string is equivalent to numeric depth-first (pre-order) traversal.
+ * Without padding, lexical order would break once a level has ten or more
+ * elements (e.g. `"10" < "2"`). This is what `%rowIndex` orders by inside a
+ * `repeat`. A 10-character pad assumes no single level exceeds 10^10 elements.
+ */
+function orderSegment(alias: string): string {
+  return `RIGHT('0000000000' + CAST(${alias}.[key] AS NVARCHAR(10)), 10)`;
 }
 
 /**
