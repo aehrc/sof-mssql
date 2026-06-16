@@ -13,7 +13,12 @@
  * @author John Grimes
  */
 
-import type { CteDefinition, PartitionKey } from "./types.js";
+import {
+  type CteDefinition,
+  type PartitionKey,
+  SQL_NVARCHAR_4000,
+  SQL_NVARCHAR_MAX,
+} from "./types.js";
 
 interface OpenJsonChain {
   applyClauses: string;
@@ -82,8 +87,8 @@ function buildAnchorMember(args: BuildRepeatCteArgs): string {
 
   return `  SELECT
     ${projLines},
-    CAST(${chain.lastAlias}.[key] AS NVARCHAR(MAX)) AS __path,
-    CAST(${orderSegment(chain.lastAlias)} AS NVARCHAR(MAX)) AS __order,
+    CAST(${chain.lastAlias}.[key] AS ${SQL_NVARCHAR_MAX}) AS __path,
+    CAST(${orderSegment(chain.lastAlias)} AS ${SQL_NVARCHAR_MAX}) AS __order,
     ${chain.lastAlias}.value AS item_json,
     0 AS depth
   ${fromClause}${ancestorApplies}
@@ -96,11 +101,11 @@ function buildRecursiveMember(
   index: number,
 ): string {
   const { cteAlias, partitionKeys } = args;
-  const head = partitionKeys.map((k) => `cte.[${k.name}]`).join(", ");
+  const head = qualifiedKeyCols("cte", partitionKeys);
   const chain = buildOpenJsonChain("cte.item_json", path, `child_${index}`);
   return `  SELECT
     ${head},
-    cte.__path + '.' + CAST(${chain.lastAlias}.[key] AS NVARCHAR(4000)) AS __path,
+    cte.__path + '.' + CAST(${chain.lastAlias}.[key] AS ${SQL_NVARCHAR_4000}) AS __path,
     cte.__order + '.' + ${orderSegment(chain.lastAlias)} AS __order,
     ${chain.lastAlias}.value AS item_json,
     cte.depth + 1
@@ -109,15 +114,36 @@ function buildRecursiveMember(
 }
 
 /**
+ * Width, in characters, that each `__order` segment is zero-padded to. A level
+ * with up to 10^ORDER_SEGMENT_WIDTH elements still sorts correctly; ten digits
+ * assume no single level exceeds 10^10 elements.
+ */
+const ORDER_SEGMENT_WIDTH = 10;
+
+/**
  * Builds one segment of the `__order` accumulator: the element's `[key]`
  * zero-padded to a fixed width so that lexical ordering of the `.`-joined
  * order string is equivalent to numeric depth-first (pre-order) traversal.
  * Without padding, lexical order would break once a level has ten or more
  * elements (e.g. `"10" < "2"`). This is what `%rowIndex` orders by inside a
- * `repeat`. A 10-character pad assumes no single level exceeds 10^10 elements.
+ * `repeat`.
+ *
+ * `__order` is emitted by every repeat CTE unconditionally: the walker builds
+ * the CTE before descending into the inner subtree, so whether `%rowIndex` is
+ * actually referenced is not yet known when the column list is generated.
  */
 function orderSegment(alias: string): string {
-  return `RIGHT('0000000000' + CAST(${alias}.[key] AS NVARCHAR(10)), 10)`;
+  const pad = "0".repeat(ORDER_SEGMENT_WIDTH);
+  return `RIGHT('${pad}' + CAST(${alias}.[key] AS NVARCHAR(${ORDER_SEGMENT_WIDTH})), ${ORDER_SEGMENT_WIDTH})`;
+}
+
+/**
+ * Renders the partition keys as a comma-separated list of bracket-quoted
+ * columns qualified by `alias` (e.g. `cte.[id], cte.[fe_0_key]`). Shared by the
+ * recursive-member projection and the repeat `%rowIndex` window's PARTITION BY.
+ */
+export function qualifiedKeyCols(alias: string, keys: PartitionKey[]): string {
+  return keys.map((k) => `${alias}.[${k.name}]`).join(", ");
 }
 
 /**

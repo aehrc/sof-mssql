@@ -12,7 +12,7 @@
 import type { TranspilerContext } from "../../../fhirpath/transpiler.js";
 import type { ViewDefinitionSelect } from "../../../types.js";
 import { freshAlias } from "../aliasGenerator.js";
-import { buildRepeatCte } from "../cteTemplates.js";
+import { buildRepeatCte, qualifiedKeyCols } from "../cteTemplates.js";
 import {
   type Context,
   type Fragment,
@@ -125,9 +125,7 @@ function buildRepeatInnerCtx(
   // appended (the resource, and any enclosing forEach element) restarts the
   // sequence per partition. The window lives in the outer SELECT, which already
   // INNER JOINs the CTE, so the reference is in scope.
-  const partitionCols = ctx.partitionKeys
-    .map((k) => `${cteAlias}.[${k.name}]`)
-    .join(", ");
+  const partitionCols = qualifiedKeyCols(cteAlias, ctx.partitionKeys);
   const partitionClause = partitionCols ? `PARTITION BY ${partitionCols} ` : "";
   const innerTranspilerCtx: TranspilerContext = {
     ...ctx.transpilerCtx,
