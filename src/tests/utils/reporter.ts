@@ -82,13 +82,12 @@ class SqlOnFhirReporter implements Reporter {
       console.log(`Skipped: ${stats.skipped}`);
       console.log(`Total:   ${stats.total}`);
 
-      // Check for test name pattern filtering (used in CI)
+      // Note when a test name filter narrowed the run, so the skipped count is
+      // not mistaken for failures. The standard run (no filter) executes the
+      // full suite, including the formerly experimental join/boundary tests.
       if (process.argv.some((arg) => arg.includes("testNamePattern"))) {
         console.log(
-          "\nNote: Tests tagged with #experimental were excluded from this run.",
-        );
-        console.log(
-          "These tests cover features outside the scope of this implementation.",
+          "\nNote: a test name filter was applied; tests outside the filter were excluded from this run.",
         );
       }
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");

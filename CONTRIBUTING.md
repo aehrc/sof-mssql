@@ -324,22 +324,23 @@ SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test -- -t "attribute"
 
 **Experimental tests**
 
-Some tests in the SQL on FHIR test suite are tagged with `#experimental`. These
-tests cover features that are outside the scope of this MS SQL Server
-implementation and may never pass. For example:
-
-- Tests requiring precise timezone handling beyond MS SQL Server capabilities
-- Tests requiring decimal precision that differs from MS SQL Server behaviour
-- Tests for features not yet fully specified in the SQL on FHIR standard
-
-Experimental tests are not expected to pass and should not block your work. To
-run only the in-scope tests locally, filter them out by test name pattern:
+Some tests in the upstream SQL on FHIR test suite are tagged with
+`#experimental`. The tag is set upstream and this project does not modify it. At
+the pinned submodule revision these are the `fn_join` and `fn_boundary` cases,
+covering `join()` over an empty collection and the `lowBoundary()` /
+`highBoundary()` functions for the `date`, `dateTime`, `time` and `decimal`
+datatypes. These features are implemented, so the tests are expected to pass and
+are part of the standard test run:
 
 ```bash
-# Run all tests, including experimental ones (some may fail)
 SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test
+```
 
-# Run only in-scope tests, excluding experimental ones
+If a future upstream revision adds experimental tests for behaviour this
+implementation does not yet support, you can exclude them by test name pattern
+while that work is pending:
+
+```bash
 SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test -- -t "^(?!.*#experimental)"
 ```
 
@@ -347,22 +348,18 @@ The pattern `^(?!.*#experimental)` matches every test name that does not contain
 the `#experimental` tag.
 
 CI runs the full suite (`npm run test`) against SQL Server 2017, 2019 and 2022.
-The test step is non-blocking, so a failing test does not fail the build;
-instead the results are published as a test report. Verifying that all in-scope
-tests pass is therefore a contributor responsibility (see the constitution,
-Principle I), not something the CI build enforces.
+The test step is blocking: a failing test fails the build, so the full suite
+guards the implemented behaviour against regression.
 
 ## Pull requests
 
 - Run `npm run format` to format all code before committing
 - Run `npm run lint` and fix any errors or warnings before committing code
-- Ensure all in-scope tests pass by running
-  `SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test -- -t "^(?!.*#experimental)"`
-- Optionally run all tests (including experimental) to check for any
-  regressions: `SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test`
+- Ensure the full test suite passes by running
+  `SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test`
 - Create focused pull requests that address a single concern
 - Provide a clear description of changes and their purpose
 - Link to relevant issues and specification sections
 - Ensure all tests pass and code follows style guidelines
-- CI runs the full test suite on every push, but the test step is non-blocking;
-  make sure all in-scope tests pass locally before requesting a merge
+- CI runs the full test suite on every push and the test step is blocking, so
+  make sure the full suite passes locally before requesting a merge

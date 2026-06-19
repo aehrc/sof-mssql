@@ -4,9 +4,12 @@
  * Creates Vitest test suites dynamically at runtime without generating physical files.
  * Each SQL-on-FHIR JSON test file becomes a describe block with individual it blocks
  * for each test case. Results are collected for report generation.
+ *
+ * @author John Grimes
  */
 
 import { readdirSync, readFileSync, statSync } from "fs";
+import { parse as losslessParse } from "lossless-json";
 import { join } from "path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ViewDefinitionParser } from "../../parser";
@@ -29,6 +32,21 @@ declare global {
 }
 
 /**
+ * Parse the `resources` array of a test suite from its raw JSON, preserving
+ * numeric lexemes (e.g. decimal trailing zeros such as 1.0) as lossless values
+ * so they survive insertion into the database (FR-011). Only the resources are
+ * parsed this way; the surrounding suite (including expected results) is parsed
+ * normally elsewhere so result comparison keeps plain numbers.
+ *
+ * @param testSuiteJson - The raw test suite JSON text.
+ * @returns The resources array with numeric lexemes preserved.
+ */
+function losslessParseResources(testSuiteJson: string): any[] {
+  const parsed = losslessParse(testSuiteJson) as { resources?: unknown };
+  return Array.isArray(parsed.resources) ? parsed.resources : [];
+}
+
+/**
  * Dynamic test generator that creates Vitest tests at runtime.
  */
 export class DynamicVitestGenerator {
@@ -38,6 +56,15 @@ export class DynamicVitestGenerator {
   generateTestsFromFile(filePath: string): void {
     const testSuiteJson = readFileSync(filePath, "utf8");
     const testSuite = ViewDefinitionParser.parseTestSuite(testSuiteJson);
+
+    // Re-parse the resources losslessly so decimal lexemes (e.g. 1.0) survive
+    // for insertion (FR-011). The standard parse used above collapses 1.0 to 1
+    // before the value ever reaches the database, which the decimal boundary
+    // functions cannot recover from. Only the resources need this treatment;
+    // the test expectations keep plain numbers so result comparison is
+    // unaffected. The lossless objects are serialised by setupTestData.
+    testSuite.resources = losslessParseResources(testSuiteJson);
+
     const suiteName = testSuite.title;
 
     // Extract filename for report (e.g., "basic.json" from "/path/to/basic.json")

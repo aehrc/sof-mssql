@@ -62,6 +62,12 @@ export interface TranspilerContext {
   // operator (forEach, forEachOrNull, repeat) sets this to the expression that
   // produces that iteration's position; absent at the resource root.
   rowIndexExpr?: string;
+  // The FHIR datatype resolved from an explicit `ofType(X)` applied directly to
+  // a `lowBoundary()`/`highBoundary()` input. It governs which boundary
+  // algorithm is emitted (research Decision 2). Set only on the short-lived
+  // iteration context created for a boundary dispatch; absent means the datatype
+  // is inferred from the value's lexical form at SQL runtime.
+  boundaryType?: string;
   testId?: string; // Optional test identifier for parallel test execution
 }
 
@@ -92,7 +98,10 @@ export class FHIRPathToTSqlVisitor
     if (invocation instanceof MemberInvocationContext) {
       return this.handleMemberInvocation(base, invocation);
     } else if (invocation instanceof FunctionInvocationContext) {
-      return this.handleFunctionInvocation(base, invocation);
+      // Pass the base expression's parse tree so boundary functions can detect
+      // an explicit ofType() applied directly to their input (research
+      // Decision 2).
+      return this.handleFunctionInvocation(base, invocation, ctx.expression());
     }
 
     return this.defaultResult();
@@ -806,6 +815,7 @@ export class FHIRPathToTSqlVisitor
   private handleFunctionInvocation(
     base: string,
     functionCtx: FunctionInvocationContext,
+    baseExpr?: ExpressionContext,
   ): string {
     const functionName = this.visit(functionCtx.function().identifier());
     const paramList = functionCtx.function().paramList();
@@ -839,8 +849,46 @@ export class FHIRPathToTSqlVisitor
 
     // Create new context and delegate to function handler
     const newContext = this.createNewIterationContext(base);
+
+    // Carry a directly-applied ofType() datatype to the boundary handler so it
+    // picks the right algorithm (research Decision 2).
+    if (functionName === "lowBoundary" || functionName === "highBoundary") {
+      newContext.boundaryType =
+        this.extractDirectOfTypeName(baseExpr) ?? undefined;
+    }
+
     const visitor = new FHIRPathToTSqlVisitor(newContext);
     return visitor.executeFunctionHandler(functionName, args);
+  }
+
+  /**
+   * Resolves the FHIR datatype named by an `ofType(X)` invocation when that
+   * invocation is applied directly to the given expression (i.e. the expression
+   * is `<something>.ofType(X)`). Returns `null` when the expression is not a
+   * direct `ofType()` call, including when a member access intervenes between
+   * the `ofType()` and the caller.
+   *
+   * @param baseExpr - The base expression a function is being applied to.
+   * @returns The raw ofType datatype name (e.g. "dateTime"), or null.
+   */
+  private extractDirectOfTypeName(
+    baseExpr: ExpressionContext | undefined,
+  ): string | null {
+    if (!(baseExpr instanceof InvocationExpressionContext)) {
+      return null;
+    }
+    const invocation = baseExpr.invocation();
+    if (!(invocation instanceof FunctionInvocationContext)) {
+      return null;
+    }
+    if (invocation.function().identifier()?.text !== "ofType") {
+      return null;
+    }
+    const paramList = invocation.function().paramList();
+    if (!paramList || paramList.expression().length !== 1) {
+      return null;
+    }
+    return paramList.expression()[0].text;
   }
 
   private handleOfTypeFunctionInvocation(
@@ -1563,17 +1611,24 @@ export class FHIRPathToTSqlVisitor
       const parentPath = nestedArrayMatch[2]; // e.g., '$.name'
       const childField = nestedArrayMatch[3]; // e.g., 'given'
 
-      // Generate SQL that iterates over ALL parent array elements and gets ALL child array values
-      return `ISNULL((SELECT STRING_AGG(ISNULL(childValue.value, ''), ${separator}) WITHIN GROUP (ORDER BY parentItem.[key], childValue.[key])
+      // Iterate over ALL parent array elements and aggregate ALL child array
+      // values. STRING_AGG yields SQL NULL when the grouped set is empty, which
+      // is exactly the FHIRPath contract for join() over an empty collection
+      // (FR-001): "nothing to join" must be NULL, not an empty string. The inner
+      // ISNULL keeps a present-but-null element contributing an empty string so
+      // it does not nullify the whole result (FR-002).
+      return `(SELECT STRING_AGG(ISNULL(childValue.value, ''), ${separator}) WITHIN GROUP (ORDER BY parentItem.[key], childValue.[key])
               FROM OPENJSON(${source}, '${parentPath}') AS parentItem
               CROSS APPLY OPENJSON(parentItem.value, '$.${childField}') AS childValue
-              WHERE childValue.type IN (1, 2)), '')`;
+              WHERE childValue.type IN (1, 2))`;
     }
 
-    // Standard join for simple arrays
-    return `ISNULL((SELECT STRING_AGG(ISNULL(value, ''), ${separator}) WITHIN GROUP (ORDER BY [key])
+    // Standard join for simple arrays. As above, the empty collection falls
+    // through STRING_AGG as SQL NULL (FR-001) while the inner ISNULL preserves
+    // empty strings for present-but-null elements (FR-002).
+    return `(SELECT STRING_AGG(ISNULL(value, ''), ${separator}) WITHIN GROUP (ORDER BY [key])
             FROM OPENJSON(${context})
-            WHERE type IN (1, 2)), '')`;
+            WHERE type IN (1, 2))`;
   }
 
   private handleWhereFunction(_args: string[]): string {
@@ -1670,13 +1725,165 @@ export class FHIRPathToTSqlVisitor
     return `(SELECT TOP 1 value FROM OPENJSON(${base}, '$.extension') WHERE JSON_VALUE(value, '$.url') = ${extensionUrl})`;
   }
 
-  private handleBoundaryFunction(
-    _functionName: string,
-    _args: string[],
-  ): string {
-    // Simplified implementation - return the value as-is
-    return (
-      this.context.iterationContext ?? `${this.context.resourceAlias}.json`
-    );
+  /**
+   * Generates inline T-SQL for the FHIRPath `lowBoundary()` / `highBoundary()`
+   * functions. The boundary is the least (low) or greatest (high) value
+   * consistent with the input's stated precision, expressed at the maximum
+   * precision for its FHIR datatype (FR-004 to FR-007, FR-010).
+   *
+   * The governing datatype is taken from an explicit `ofType()` applied directly
+   * to the input where present (`this.context.boundaryType`), otherwise inferred
+   * from the value's lexical form at SQL runtime. An absent source element
+   * yields SQL NULL for every branch (FR-009). All logic is emitted inline so
+   * the query stays self-contained, requiring no pre-installed database object
+   * (FR-013).
+   *
+   * @param functionName - Either "lowBoundary" or "highBoundary".
+   * @param args - Function arguments; a non-empty list is the unsupported
+   *   explicit-precision form and is rejected.
+   * @returns A T-SQL scalar expression computing the boundary value.
+   * @throws If called with an explicit-precision argument, or resolved (via
+   *   ofType) to a datatype for which boundaries are not supported (FR-008).
+   */
+  private handleBoundaryFunction(functionName: string, args: string[]): string {
+    // The optional explicit-precision argument is out of scope; reject it with a
+    // clear error rather than silently returning a wrong value (FR-008).
+    if (args.length > 0) {
+      throw new Error(
+        `${functionName}() with an explicit precision argument is not supported`,
+      );
+    }
+
+    const isLow = functionName === "lowBoundary";
+    const value =
+      this.context.iterationContext ?? `${this.context.resourceAlias}.json`;
+    const resolved = this.context.boundaryType;
+
+    // Datatype known from an explicit ofType() directly on the boundary input.
+    if (resolved) {
+      switch (resolved) {
+        case "date":
+          return this.dateBoundarySql(value, isLow);
+        case "dateTime":
+          return this.dateTimeBoundarySql(value, isLow);
+        case "time":
+          return this.timeBoundarySql(value, isLow);
+        case "decimal":
+          return this.decimalBoundarySql(value, isLow);
+        default:
+          throw new Error(
+            `${functionName}() is not supported for FHIR datatype '${resolved}'`,
+          );
+      }
+    }
+
+    // No explicit ofType(): classify the value by its lexical form at runtime.
+    return this.lexicalBoundarySql(value, isLow);
+  }
+
+  /**
+   * Boundary SQL for a value of unknown datatype, classified from its lexical
+   * form at SQL runtime (research Decision 2): a `T` marks a dateTime, a `:`
+   * marks a time, an interior `-` marks a date, and anything else is treated as
+   * a decimal. NULL propagates to NULL (FR-009).
+   */
+  private lexicalBoundarySql(value: string, isLow: boolean): string {
+    // Every branch must yield the same SQL type: a CASE that mixed the string
+    // temporal results with the numeric decimal result would have its result
+    // type coerced to the decimal (higher precedence), forcing SQL Server to
+    // convert the temporal strings to numeric and fail. The decimal branch is
+    // therefore rendered as text; a decimal column's own cast and the numeric
+    // result comparison both accept the textual form.
+    return `CASE
+      WHEN ${value} IS NULL THEN NULL
+      WHEN CHARINDEX('T', ${value}) > 0 THEN ${this.dateTimeBoundarySql(value, isLow)}
+      WHEN CHARINDEX(':', ${value}) > 0 THEN ${this.timeBoundarySql(value, isLow)}
+      WHEN CHARINDEX('-', ${value}) > 1 THEN ${this.dateBoundarySql(value, isLow)}
+      ELSE CAST(${this.decimalBoundarySql(value, isLow)} AS NVARCHAR(50))
+    END`;
+  }
+
+  /**
+   * Boundary SQL for a `date` value (maximum precision = day): a partial value
+   * is padded to a full date. For `highBoundary`, a year-month resolves to the
+   * last day of the month via EOMONTH (FR-005). NULL propagates to NULL.
+   */
+  private dateBoundarySql(value: string, isLow: boolean): string {
+    if (isLow) {
+      return `CASE LEN(${value})
+        WHEN 4 THEN ${value} + '-01-01'
+        WHEN 7 THEN ${value} + '-01'
+        ELSE ${value}
+      END`;
+    }
+    return `CASE LEN(${value})
+      WHEN 4 THEN ${value} + '-12-31'
+      WHEN 7 THEN CONVERT(VARCHAR(10), EOMONTH(CAST(${value} + '-01' AS DATE)), 23)
+      ELSE ${value}
+    END`;
+  }
+
+  /**
+   * Boundary SQL for a `dateTime` value (maximum precision = millisecond +
+   * timezone). A date-shaped value (no time component) is padded to a full
+   * instant filling the minimum components and the FHIR extreme offset `+14:00`
+   * for `lowBoundary`, or the maximum components and `-12:00` for `highBoundary`
+   * (FR-006). A value already carrying a time has its time component padded to
+   * millisecond precision and the extreme offset appended; explicit offsets in
+   * such values are not exercised by the suite. NULL propagates to NULL.
+   */
+  private dateTimeBoundarySql(value: string, isLow: boolean): string {
+    const tz = isLow ? "+14:00" : "-12:00";
+    const datePadded = this.dateBoundarySql(value, isLow);
+    const timeTail = isLow ? "T00:00:00.000" : "T23:59:59.999";
+    const timePart = `SUBSTRING(${value}, 12, LEN(${value}))`;
+    return `CASE
+      WHEN ${value} IS NULL THEN NULL
+      WHEN CHARINDEX('T', ${value}) = 0 THEN (${datePadded}) + '${timeTail}${tz}'
+      ELSE LEFT(${value}, 10) + 'T' + ${this.padTimeComponent(timePart, isLow)} + '${tz}'
+    END`;
+  }
+
+  /**
+   * Boundary SQL for a `time` value (maximum precision = millisecond): the value
+   * is padded to `HH:MM:SS.fff`, filling absent components with their minimum
+   * (`:00.000`) for `lowBoundary` or maximum (`:59.999`) for `highBoundary`
+   * (FR-007). NULL propagates to NULL.
+   */
+  private timeBoundarySql(value: string, isLow: boolean): string {
+    return `CASE
+      WHEN ${value} IS NULL THEN NULL
+      ELSE ${this.padTimeComponent(value, isLow)}
+    END`;
+  }
+
+  /**
+   * Pads a bare time component (`HH:MM` or `HH:MM:SS`) to millisecond precision,
+   * filling absent seconds/milliseconds with their minimum or maximum.
+   */
+  private padTimeComponent(timeExpr: string, isLow: boolean): string {
+    const seconds = isLow ? ":00.000" : ":59.999";
+    const millis = isLow ? ".000" : ".999";
+    return `CASE LEN(${timeExpr})
+      WHEN 5 THEN ${timeExpr} + '${seconds}'
+      WHEN 8 THEN ${timeExpr} + '${millis}'
+      ELSE ${timeExpr}
+    END`;
+  }
+
+  /**
+   * Boundary SQL for a `decimal` value (FR-010). With N fractional digits the
+   * value is known to within half a unit in the last place, so the boundary is
+   * `value ∓ 0.5 × 10⁻ᴺ` (e.g. `1.0` → `0.95` / `1.05`). The half-unit delta is
+   * built as a decimal literal from the runtime fractional-digit count to avoid
+   * relying on POWER's scale behaviour. NULL propagates to NULL.
+   */
+  private decimalBoundarySql(value: string, isLow: boolean): string {
+    const op = isLow ? "-" : "+";
+    // Count the fractional digits present in the lexeme.
+    const fractionDigits = `CASE WHEN CHARINDEX('.', ${value}) = 0 THEN 0 ELSE LEN(${value}) - CHARINDEX('.', ${value}) END`;
+    // Build 0.5 × 10⁻ᴺ as the string '0.' + N zeros + '5', then cast to decimal.
+    const delta = `CAST('0.' + REPLICATE('0', ${fractionDigits}) + '5' AS DECIMAL(38, 18))`;
+    return `CAST(${value} AS DECIMAL(38, 18)) ${op} ${delta}`;
   }
 }
