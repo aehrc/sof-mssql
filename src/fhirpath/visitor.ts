@@ -1563,17 +1563,24 @@ export class FHIRPathToTSqlVisitor
       const parentPath = nestedArrayMatch[2]; // e.g., '$.name'
       const childField = nestedArrayMatch[3]; // e.g., 'given'
 
-      // Generate SQL that iterates over ALL parent array elements and gets ALL child array values
-      return `ISNULL((SELECT STRING_AGG(ISNULL(childValue.value, ''), ${separator}) WITHIN GROUP (ORDER BY parentItem.[key], childValue.[key])
+      // Iterate over ALL parent array elements and aggregate ALL child array
+      // values. STRING_AGG yields SQL NULL when the grouped set is empty, which
+      // is exactly the FHIRPath contract for join() over an empty collection
+      // (FR-001): "nothing to join" must be NULL, not an empty string. The inner
+      // ISNULL keeps a present-but-null element contributing an empty string so
+      // it does not nullify the whole result (FR-002).
+      return `(SELECT STRING_AGG(ISNULL(childValue.value, ''), ${separator}) WITHIN GROUP (ORDER BY parentItem.[key], childValue.[key])
               FROM OPENJSON(${source}, '${parentPath}') AS parentItem
               CROSS APPLY OPENJSON(parentItem.value, '$.${childField}') AS childValue
-              WHERE childValue.type IN (1, 2)), '')`;
+              WHERE childValue.type IN (1, 2))`;
     }
 
-    // Standard join for simple arrays
-    return `ISNULL((SELECT STRING_AGG(ISNULL(value, ''), ${separator}) WITHIN GROUP (ORDER BY [key])
+    // Standard join for simple arrays. As above, the empty collection falls
+    // through STRING_AGG as SQL NULL (FR-001) while the inner ISNULL preserves
+    // empty strings for present-but-null elements (FR-002).
+    return `(SELECT STRING_AGG(ISNULL(value, ''), ${separator}) WITHIN GROUP (ORDER BY [key])
             FROM OPENJSON(${context})
-            WHERE type IN (1, 2)), '')`;
+            WHERE type IN (1, 2))`;
   }
 
   private handleWhereFunction(_args: string[]): string {
