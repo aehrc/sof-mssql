@@ -88,7 +88,6 @@ function buildRootContext(
     source: `${resourceAlias}.json`,
     partitionKeys: [idKey],
     ancestorApplies: "",
-    nullable: false,
     cteCounter: { value: 0 },
     transpilerCtx,
   };

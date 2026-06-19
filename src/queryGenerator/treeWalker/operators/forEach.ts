@@ -44,8 +44,8 @@ interface ForEachDeps {
  * @param node - The ForEach or ForEachOrNull select node.  `node.forEach` or
  *   `node.forEachOrNull` supplies the FHIRPath expression to iterate.
  * @param ctx - The current walker context; the inner context is derived from
- *   it by updating `source`, `partitionKeys`, `ancestorApplies`, `nullable`,
- *   and `transpilerCtx`.
+ *   it by updating `source`, `partitionKeys`, `ancestorApplies`, and
+ *   `transpilerCtx`.
  * @param walk - The recursive walk function used to visit the inner sub-tree.
  * @param deps - Dependencies containing the `PathParser` used to parse and
  *   decompose the FHIRPath expression.
@@ -72,7 +72,7 @@ export function walkForEach(
     deps.pathParser,
   );
 
-  const innerCtx = buildInnerCtx(ctx, alias, rawPath, applyClause, isOrNull);
+  const innerCtx = buildInnerCtx(ctx, alias, rawPath, applyClause);
   const innerNode: ViewDefinitionSelect = {
     column: node.column,
     select: node.select,
@@ -91,7 +91,6 @@ function buildInnerCtx(
   alias: string,
   rawPath: string,
   applyClause: string,
-  isOrNull: boolean,
 ): Context {
   const innerTranspilerCtx: TranspilerContext = {
     ...ctx.transpilerCtx,
@@ -115,7 +114,6 @@ function buildInnerCtx(
     source: `${alias}.value`,
     partitionKeys: [...ctx.partitionKeys, innerKey],
     ancestorApplies: ctx.ancestorApplies + applyClause,
-    nullable: ctx.nullable || isOrNull,
     transpilerCtx: innerTranspilerCtx,
   };
 }
