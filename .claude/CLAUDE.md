@@ -11,10 +11,15 @@
 Every transpilation feature MUST conform to the [SQL on FHIR v2
 specification](https://sql-on-fhir.org/ig/2.0.0/). Conformance is proven, not
 asserted: the upstream `sqlonfhir` test submodule is the source of truth, and
-all in-scope (non-`#experimental`) tests MUST pass before a change merges. A
-feature that diverges from the specification MUST either be tagged
-`#experimental` with a documented reason, or not ship. New behaviour MUST cite
-the relevant section of the specification.
+the full test suite MUST pass before a change merges. This includes the `join()`
+over an empty collection and the `lowBoundary()` / `highBoundary()` functions
+(for `date`, `dateTime`, `time` and `decimal`), which are implemented and whose
+upstream `#experimental` tests are therefore in scope and expected to pass. The
+upstream `#experimental` tags are owned by the submodule and MUST NOT be edited.
+If a future upstream revision adds tests for behaviour this implementation does
+not yet support, those specific tests MAY be excluded from the gate with a
+documented reason; anything else that diverges from the specification MUST not
+ship. New behaviour MUST cite the relevant section of the specification.
 
 _Rationale: the project's entire value is being a faithful SQL on FHIR runner.
 Silent divergence from the spec produces wrong analytical results that

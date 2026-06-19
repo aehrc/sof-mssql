@@ -65,7 +65,6 @@ jobs:
 
       - name: Run tests
         run: npm run test
-        continue-on-error: true
         env:
           SQLONFHIR_TEST_PATH: ./sqlonfhir/tests
           MSSQL_HOST: localhost
