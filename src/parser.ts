@@ -28,7 +28,7 @@ export class ViewDefinitionParser {
   }
 
   /**
-   * Parse a test suite from the sql-on-fhir-v2 format.
+   * Parse a test suite from the SQL on FHIR test format.
    */
   static parseTestSuite(json: string | object): TestSuite {
     const data = typeof json === "string" ? JSON.parse(json) : json;

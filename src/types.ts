@@ -273,7 +273,7 @@ export interface TriggerDefinition {}
 export interface Dosage {}
 
 /**
- * Test case structure from sql-on-fhir-v2 repository.
+ * Test case structure from the SQL on FHIR repository.
  */
 export interface TestCase {
   title: string;

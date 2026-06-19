@@ -264,11 +264,11 @@ large FHIR resource tables.
 
 The project uses [Vitest](https://vitest.dev/) for testing. Tests are defined in
 JSON files under `sqlonfhir/tests/` following
-the [SQL on FHIR test specification](https://github.com/FHIR/sql-on-fhir-v2/blob/master/tests/README.md).
+the [SQL on FHIR test specification](https://github.com/FHIR/sql-on-fhir.js/blob/main/tests.schema.json).
 
 **Note**: The `sqlonfhir/` directory is a git submodule pointing to
-the [SQL on FHIR v2 repository](https://github.com/FHIR/sql-on-fhir-v2). Test
-definitions and ViewDefinition examples are maintained in that upstream
+the [SQL on FHIR JavaScript repository](https://github.com/FHIR/sql-on-fhir.js).
+Test definitions and ViewDefinition examples are maintained in that upstream
 repository.
 
 **Environment setup**

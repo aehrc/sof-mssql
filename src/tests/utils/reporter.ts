@@ -2,7 +2,7 @@
  * Custom Vitest reporter for SQL-on-FHIR test result collection.
  *
  * Collects test results during Vitest execution and formats them according
- * to the FHIR sql-on-fhir-v2 test report schema. Results are stored globally
+ * to the SQL on FHIR test report schema. Results are stored globally
  * and can be accessed after test completion for report generation.
  */
 

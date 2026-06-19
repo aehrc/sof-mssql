@@ -2,7 +2,7 @@
  * Type definitions for test reporting.
  *
  * Matches the SQL on FHIR test report schema:
- * https://raw.githubusercontent.com/FHIR/sql-on-fhir-v2/refs/heads/master/test_report/test-report.schema.json
+ * https://raw.githubusercontent.com/FHIR/sql-on-fhir.js/refs/heads/main/test_report/test-report.schema.json
  */
 
 export interface TestReportEntry {
