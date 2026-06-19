@@ -3,8 +3,11 @@
  *
  * Provides functions to manage database connections, table creation,
  * and test data lifecycle during Vitest test execution.
+ *
+ * @author John Grimes
  */
 
+import { stringify as losslessStringify } from "lossless-json";
 import { ConnectionPool, config as MSSQLConfig, Request } from "mssql";
 
 // Global connection pool
@@ -131,7 +134,13 @@ export async function setupTestData(
 
       const insertRequest = new Request(globalPool);
       insertRequest.input("resource_type", resource.resourceType);
-      insertRequest.input("json", JSON.stringify(resource));
+      // Serialise with lossless-json so decimal lexemes (including trailing
+      // zeros, e.g. 1.0) are preserved in the stored JSON. This relies on the
+      // resource having been parsed losslessly upstream (see the dynamic test
+      // generator); plain JSON.stringify would collapse 1.0 to 1 and strip the
+      // precision the boundary functions depend on (FR-011). Non-numeric values
+      // are unaffected.
+      insertRequest.input("json", losslessStringify(resource) ?? "null");
       insertRequest.input("test_id", testId);
 
       const result = await insertRequest.query(insertSql);

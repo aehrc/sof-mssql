@@ -66,6 +66,7 @@
     "@vitest/ui": "^3.2.4",
     "antlr4ts-cli": "^0.5.0-alpha.4",
     "eslint": "^9.11.1",
+    "lossless-json": "^4.3.0",
     "prettier": "^3.6.2",
     "tsx": "^4.20.6",
     "typescript": "^5.6.2",
