@@ -53,8 +53,6 @@ export interface Context {
    * with "\n".
    */
   ancestorApplies: string;
-  /** True if any forEachOrNull ancestor is in scope. */
-  nullable: boolean;
   /** Shared mutable counter for unique CTE/alias names across the whole compile. */
   cteCounter: { value: number };
   /** Pass-through context for the FHIRPath transpiler. */
