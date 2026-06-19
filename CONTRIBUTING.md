@@ -332,33 +332,37 @@ implementation and may never pass. For example:
 - Tests requiring decimal precision that differs from MS SQL Server behaviour
 - Tests for features not yet fully specified in the SQL on FHIR standard
 
-These tests are excluded from CI builds to prevent build failures, but are still
-available for local development:
+Experimental tests are not expected to pass and should not block your work. To
+run only the in-scope tests locally, filter them out by test name pattern:
 
 ```bash
-# Run all tests including experimental ones (may have failures)
+# Run all tests, including experimental ones (some may fail)
 SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test
 
-# Run only tests that should pass in CI (excludes experimental)
-SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test:ci
+# Run only in-scope tests, excluding experimental ones
+SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test -- -t "^(?!.*#experimental)"
 ```
 
-The CI build uses `npm run test:ci`, which excludes experimental tests using the
-test name pattern `^(?!.*#experimental)`. This ensures that CI builds succeed
-when all in-scope tests pass, while still maintaining visibility of experimental
-test results during local development.
+The pattern `^(?!.*#experimental)` matches every test name that does not contain
+the `#experimental` tag.
+
+CI runs the full suite (`npm run test`) against SQL Server 2017, 2019 and 2022.
+The test step is non-blocking, so a failing test does not fail the build;
+instead the results are published as a test report. Verifying that all in-scope
+tests pass is therefore a contributor responsibility (see the constitution,
+Principle I), not something the CI build enforces.
 
 ## Pull requests
 
 - Run `npm run format` to format all code before committing
 - Run `npm run lint` and fix any errors or warnings before committing code
 - Ensure all in-scope tests pass by running
-  `SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test:ci`
+  `SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test -- -t "^(?!.*#experimental)"`
 - Optionally run all tests (including experimental) to check for any
   regressions: `SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test`
 - Create focused pull requests that address a single concern
 - Provide a clear description of changes and their purpose
 - Link to relevant issues and specification sections
 - Ensure all tests pass and code follows style guidelines
-- All pull requests must pass CI tests before merging (CI uses `npm run test:ci`
-  which excludes experimental tests)
+- CI runs the full test suite on every push, but the test step is non-blocking;
+  make sure all in-scope tests pass locally before requesting a merge
