@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "sql-on-fhir": {
+      "source": "johngrimes/skills",
+      "sourceType": "github",
+      "skillPath": "sql-on-fhir/SKILL.md",
+      "computedHash": "268bdddd5eff00c454a8bfc09d3ff566a141cae271493a1ab23eedc93a774fa8"
+    }
+  }
+}
