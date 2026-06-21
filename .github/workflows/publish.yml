@@ -94,6 +94,9 @@ jobs:
           MSSQL_USER: sa
           MSSQL_PASSWORD: ${{ secrets.SA_PASSWORD }}
           MSSQL_RESOURCE_JSON_DATA_TYPE: ${{ matrix.resource-json-data-type }}
+          # The CI SQL Server presents a self-signed certificate, so the loader
+          # connection path must be told to trust it.
+          MSSQL_TRUST_SERVER_CERTIFICATE: "true"
 
       - name: Upload test report artifact
         if: always()
