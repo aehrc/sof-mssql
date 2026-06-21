@@ -52,6 +52,15 @@ export interface LoaderOptions {
   tableName?: string;
   /** Schema name (default: dbo). */
   schemaName?: string;
+  /**
+   * Storage type for the resources table `json` column. One of `NVARCHAR(MAX)`
+   * (default) or `JSON`. Matching is case-insensitive and tolerant of
+   * surrounding whitespace. `JSON` selects SQL Server 2025's native JSON type
+   * and requires SQL Server 2025 or later; when omitted the column is created as
+   * `NVARCHAR(MAX)`, exactly as in earlier releases. The value is validated
+   * against the allowlist before any database connection is opened.
+   */
+  resourceJsonDataType?: string;
   /** Create table if it doesn't exist. */
   createTable?: boolean;
   /** Truncate table before loading. */

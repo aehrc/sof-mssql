@@ -8,8 +8,28 @@ jobs:
     name: Build and test
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        sql-version: ["2017-latest", "2019-latest", "2022-latest"]
+        include:
+          # SQL Server 2017-2022 only support NVARCHAR(MAX) storage for the
+          # resources json column.
+          - sql-version: "2017-latest"
+            resource-json-data-type: "NVARCHAR(MAX)"
+            report-suffix: ""
+          - sql-version: "2019-latest"
+            resource-json-data-type: "NVARCHAR(MAX)"
+            report-suffix: ""
+          - sql-version: "2022-latest"
+            resource-json-data-type: "NVARCHAR(MAX)"
+            report-suffix: ""
+          # SQL Server 2025 is exercised against both column types: NVARCHAR(MAX)
+          # as a regression guard, and the native JSON type.
+          - sql-version: "2025-latest"
+            resource-json-data-type: "NVARCHAR(MAX)"
+            report-suffix: ""
+          - sql-version: "2025-latest"
+            resource-json-data-type: "JSON"
+            report-suffix: "-json"
 
     services:
       sqlserver:
@@ -71,11 +91,12 @@ jobs:
           MSSQL_DATABASE: testdb
           MSSQL_USER: sa
           MSSQL_PASSWORD: ${{ secrets.SA_PASSWORD }}
+          MSSQL_RESOURCE_JSON_DATA_TYPE: ${{ matrix.resource-json-data-type }}
 
       - name: Upload test report artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-report-${{ matrix.sql-version }}
+          name: test-report-${{ matrix.sql-version }}${{ matrix.report-suffix }}
           path: out/test-report.json
           retention-days: 30
