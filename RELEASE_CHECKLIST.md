@@ -126,24 +126,61 @@ Conventions:
 
 - [ ] Release notes drafted and reviewed.
 
-## 5. Publish the GitHub Release
+## 5. Create and push the release tag
 
-Creating and publishing the release also creates the tag. Point it at the commit
-that contains the version bump (the tip of `main`).
+Create the tag explicitly, as its own step, before the release exists. The
+release in the next step is then attached to this pre-existing tag rather than
+having a tag created for it from a moving branch. This guarantees the published
+artefact corresponds to exactly the commit that was tagged, even if `main`
+advances in between.
 
-- [ ] Create the release, e.g. with the GitHub CLI (requires explicit approval
-      to run a write operation):
+Use an annotated tag (it records the tagger, date and a message) on the commit
+that contains the version bump - the tip of `main` pushed in step 3.
+
+- [ ] Confirm `main` is pushed and the bump commit is its tip:
 
   ```bash
-  gh release create vX.Y.Z --target main --title "vX.Y.Z" --notes-file notes.md
+  git fetch origin
+  git log --oneline -1 origin/main   # should be "Bump version to X.Y.Z"
   ```
 
-  Or create it through the GitHub web UI. Leave "Set as latest release" enabled
-  for a normal release; tick "pre-release" only for a pre-release.
+- [ ] Create the annotated tag at that commit and push it (requires explicit
+      approval to run a write operation):
 
-- [ ] Confirm the tag is `vX.Y.Z` and matches the `package.json` version.
+  ```bash
+  git tag -a vX.Y.Z -m "Release vX.Y.Z"
+  git push origin vX.Y.Z
+  ```
 
-## 6. Monitor the workflow
+- [ ] Confirm the tag is on the remote and points at the bump commit:
+
+  ```bash
+  git ls-remote --tags origin vX.Y.Z
+  ```
+
+## 6. Publish the GitHub Release
+
+Attach the release to the tag pushed in step 5. Do not use `--target`: that
+would ask GitHub to create a tag, which is exactly what step 5 already did
+deliberately. Passing `--verify-tag` makes the command abort if the tag does not
+already exist on the remote, enforcing that every release points at a real,
+pre-pushed tag.
+
+- [ ] Create the release against the existing tag (requires explicit approval to
+      run a write operation):
+
+  ```bash
+  gh release create vX.Y.Z --verify-tag --title "vX.Y.Z" --notes-file notes.md
+  ```
+
+  Or create it through the GitHub web UI by selecting the existing `vX.Y.Z` tag
+  (do not let the UI create a new tag). Leave "Set as latest release" enabled for
+  a normal release; tick "pre-release" only for a pre-release.
+
+- [ ] Confirm the release is attached to tag `vX.Y.Z` and that the tag matches
+      the `package.json` version.
+
+## 7. Monitor the workflow
 
 - [ ] The `Publish to npm` workflow run starts for the published release.
 - [ ] The **Build and test** matrix jobs succeed. Open the run and confirm the
@@ -154,7 +191,7 @@ that contains the version bump (the tip of `main`).
       step is non-blocking).
 - [ ] The **Publish test report to GitHub Pages** job succeeds.
 
-## 7. Post-release verification
+## 8. Post-release verification
 
 - [ ] The new version is live on npm:
 
