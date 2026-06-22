@@ -59,22 +59,68 @@ export function buildCreateTableStatements(
 }
 
 /**
- * Resolve an INFORMATION_SCHEMA column description to a canonical json type.
+ * Render an INFORMATION_SCHEMA column type for a diagnostic message.
  *
- * The native type appears as `data_type = 'json'`; `NVARCHAR(MAX)` appears as
- * `data_type = 'nvarchar'` with `character_maximum_length = -1`. Any other
- * nvarchar form is treated as `NVARCHAR(MAX)` for the purpose of the
- * mismatch comparison, since the only native alternative is `JSON`.
+ * Length-bearing types are shown with their declared length, with the `-1`
+ * sentinel rendered as `MAX`; types reported without a length (such as the
+ * native `JSON` type) are shown as the bare type name.
  *
  * @param dataType - The INFORMATION_SCHEMA DATA_TYPE.
- * @param _characterMaximumLength - The INFORMATION_SCHEMA CHARACTER_MAXIMUM_LENGTH.
- * @returns The canonical resource json data type.
+ * @param characterMaximumLength - The INFORMATION_SCHEMA CHARACTER_MAXIMUM_LENGTH.
+ * @returns A readable type such as `VARCHAR(100)`, `NVARCHAR(MAX)` or `JSON`.
+ */
+function formatColumnType(
+  dataType: string,
+  characterMaximumLength: number | null,
+): string {
+  const baseType = dataType.trim().toUpperCase();
+  if (characterMaximumLength === null) {
+    return baseType;
+  }
+  const length =
+    characterMaximumLength === -1 ? "MAX" : String(characterMaximumLength);
+  return `${baseType}(${length})`;
+}
+
+/**
+ * Resolve an INFORMATION_SCHEMA column description to a canonical json type.
+ *
+ * Only two column shapes can faithfully hold a serialised FHIR resource: the
+ * native type (`data_type = 'json'`) and `NVARCHAR(MAX)` (`data_type =
+ * 'nvarchar'` with `character_maximum_length = -1`). Any other shape - a bounded
+ * `NVARCHAR(64)`, a non-Unicode `VARCHAR`, `TEXT`, and so on - is rejected here
+ * rather than silently coerced to `NVARCHAR(MAX)`. Coercion would let the
+ * mismatch check pass and the loader write into a column that cannot hold the
+ * data, surfacing later as a `String or binary data would be truncated` error
+ * or, under non-Unicode `VARCHAR`, silent character corruption. Failing fast
+ * turns that late, data-dependent failure into an early, actionable
+ * configuration error (Constitution Principle IV).
+ *
+ * @param dataType - The INFORMATION_SCHEMA DATA_TYPE.
+ * @param characterMaximumLength - The INFORMATION_SCHEMA CHARACTER_MAXIMUM_LENGTH.
+ * @returns The canonical resource json data type (`JSON` or `NVARCHAR(MAX)`).
+ * @throws Error if the column is neither native `JSON` nor `NVARCHAR(MAX)`. The
+ *   message names the offending type and the two acceptable types.
  */
 export function resolveColumnJsonDataType(
   dataType: string,
-  _characterMaximumLength: number | null,
+  characterMaximumLength: number | null,
 ): ResourceJsonDataType {
-  return dataType.trim().toLowerCase() === "json" ? "JSON" : "NVARCHAR(MAX)";
+  const normalised = dataType.trim().toLowerCase();
+  if (normalised === "json") {
+    return "JSON";
+  }
+  // NVARCHAR(MAX) is the only nvarchar form that can hold an arbitrarily long
+  // resource; bounded lengths would truncate, so the length is required here.
+  if (normalised === "nvarchar" && characterMaximumLength === -1) {
+    return "NVARCHAR(MAX)";
+  }
+  throw new Error(
+    `Existing [json] column is ` +
+      `${formatColumnType(dataType, characterMaximumLength)}, which cannot ` +
+      `safely hold serialised FHIR resources. Expected NVARCHAR(MAX) or JSON. ` +
+      `Alter or drop the column before loading.`,
+  );
 }
 
 /**
@@ -136,6 +182,8 @@ export async function tableExists(
  * @param tableName - Name of the table.
  * @returns The canonical json column type, or null if the table or its `json`
  *   column does not exist.
+ * @throws Error if the column exists but is neither native `JSON` nor
+ *   `NVARCHAR(MAX)` (see {@link resolveColumnJsonDataType}).
  */
 export async function getExistingJsonColumnType(
   pool: ConnectionPool,
@@ -165,10 +213,16 @@ export async function getExistingJsonColumnType(
  * requested type. The table is never altered; this only surfaces the mismatch
  * so it is visible rather than silently ignored (FR-008, SC-005).
  *
+ * An existing column that is neither native `JSON` nor `NVARCHAR(MAX)` cannot
+ * hold a serialised FHIR resource, so it is rejected outright rather than
+ * warned about: the error is raised here before any rows are loaded.
+ *
  * @param pool - Database connection pool.
  * @param schemaName - Schema name.
  * @param tableName - Name of the table.
  * @param requestedType - The requested json column type.
+ * @throws Error if the existing `json` column is neither native `JSON` nor
+ *   `NVARCHAR(MAX)` (see {@link resolveColumnJsonDataType}).
  */
 export async function warnIfJsonTypeMismatch(
   pool: ConnectionPool,

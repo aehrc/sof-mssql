@@ -117,6 +117,56 @@ describe("resolveColumnJsonDataType", () => {
     expect(resolveColumnJsonDataType("JSON", null)).toBe("JSON");
     expect(resolveColumnJsonDataType("NVARCHAR", -1)).toBe("NVARCHAR(MAX)");
   });
+
+  it("tolerates surrounding whitespace on the data type name", () => {
+    expect(resolveColumnJsonDataType("  json  ", null)).toBe("JSON");
+    expect(resolveColumnJsonDataType(" nvarchar ", -1)).toBe("NVARCHAR(MAX)");
+  });
+
+  // An existing column that is neither native JSON nor NVARCHAR(MAX) cannot
+  // faithfully hold a serialised FHIR resource. Such a column must be rejected
+  // at the boundary, naming the offending type, rather than silently coerced to
+  // NVARCHAR(MAX) - coercion would let the loader write into it and lose data
+  // through truncation or, under non-Unicode VARCHAR, character corruption
+  // (Constitution Principle IV).
+  describe("rejects column types that cannot hold a FHIR resource", () => {
+    it("throws for a bounded nvarchar, naming the offending type", () => {
+      expect(() => resolveColumnJsonDataType("nvarchar", 64)).toThrow(
+        /NVARCHAR\(64\)/,
+      );
+    });
+
+    it("throws for varchar, naming the offending type", () => {
+      expect(() => resolveColumnJsonDataType("varchar", 100)).toThrow(
+        /VARCHAR\(100\)/,
+      );
+    });
+
+    it("throws for a max-length varchar, which is still not Unicode-safe", () => {
+      // VARCHAR(MAX) reports a length of -1 but is non-Unicode, so it can
+      // silently corrupt multi-byte characters and must still be rejected.
+      expect(() => resolveColumnJsonDataType("varchar", -1)).toThrow(
+        /VARCHAR\(MAX\)/,
+      );
+    });
+
+    it("throws for text, naming the offending type", () => {
+      expect(() => resolveColumnJsonDataType("text", 2147483647)).toThrow(
+        /TEXT/,
+      );
+    });
+
+    it("names both acceptable types in the error message", () => {
+      let message = "";
+      try {
+        resolveColumnJsonDataType("varchar", 100);
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain("NVARCHAR(MAX)");
+      expect(message).toContain("JSON");
+    });
+  });
 });
 
 describe("buildJsonTypeMismatchWarning", () => {

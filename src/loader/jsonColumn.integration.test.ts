@@ -89,3 +89,20 @@ describe("loadNdjsonFiles json column type (US2 - programmatic, no CLI)", () => 
     expect(columnType.maxLength).toBe(-1);
   });
 });
+
+describe("loadNdjsonFiles existing json column safeguard (FR-008)", () => {
+  it("fails fast when an existing json column cannot hold a FHIR resource", async () => {
+    // A pre-existing table whose json column is a bounded VARCHAR cannot hold a
+    // serialised FHIR resource. The loader must reject it before writing any
+    // rows, rather than coercing it to NVARCHAR(MAX) and corrupting data.
+    const tableName = harness.makeTableName();
+    await harness.createTableWithJsonColumnType(tableName, "VARCHAR(100)");
+
+    await expect(harness.loadSample(tableName)).rejects.toThrow(
+      /VARCHAR\(100\)/,
+    );
+
+    // No rows must have been written into the unsafe column.
+    expect(await harness.getRowCount(tableName)).toBe(0);
+  });
+});

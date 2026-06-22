@@ -329,9 +329,14 @@ await loadNdjsonFiles({
 ```
 
 An invalid value is rejected with a clear error before any database connection
-is opened. If the target table already exists with a different `json` column
-type, the loader prints a warning naming both types and loads into the existing
-table without altering it.
+is opened. If the target table already exists with a `json` column that is the
+other supported type (`NVARCHAR(MAX)` when `JSON` was requested, or vice versa),
+the loader prints a warning naming both types and loads into the existing table
+without altering it. If the existing `json` column is neither `NVARCHAR(MAX)` nor
+native `JSON` - for example a bounded `VARCHAR(100)` or `TEXT` that cannot hold a
+serialised FHIR resource - the loader fails fast with an error naming the
+offending type, before any rows are loaded, rather than writing into a column
+that would truncate or corrupt the data.
 
 ### Working with ViewDefinition strings
 

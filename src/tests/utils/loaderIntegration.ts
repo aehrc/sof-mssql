@@ -49,6 +49,14 @@ export interface LoaderIntegrationHarness {
   isNativeJsonSupported(): boolean;
   /** Generate and register a unique, valid table name. */
   makeTableName(): string;
+  /**
+   * Create a loader-shaped table whose `json` column uses the given SQL type,
+   * for exercising the existing-column mismatch safeguard.
+   */
+  createTableWithJsonColumnType(
+    tableName: string,
+    jsonColumnType: string,
+  ): Promise<void>;
   /** Load the sample NDJSON into a table, returning the rows loaded. */
   loadSample(tableName: string, resourceJsonDataType?: string): Promise<number>;
   /** Read the effective type of a table's json column. */
@@ -122,6 +130,24 @@ export function createLoaderIntegrationHarness(): LoaderIntegrationHarness {
     return tableName;
   }
 
+  async function createTableWithJsonColumnType(
+    tableName: string,
+    jsonColumnType: string,
+  ): Promise<void> {
+    // Mirrors the loader's table shape but with a deliberately chosen json
+    // column type so the existing-column mismatch safeguard can be exercised.
+    // The type is a test-controlled literal, not external input.
+    await requirePool()
+      .request()
+      .query(
+        `CREATE TABLE [dbo].[${tableName}] (
+         [id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+         [resource_type] NVARCHAR(64) NOT NULL,
+         [json] ${jsonColumnType} NOT NULL
+       )`,
+      );
+  }
+
   async function loadSample(
     tableName: string,
     resourceJsonDataType?: string,
@@ -161,6 +187,7 @@ export function createLoaderIntegrationHarness(): LoaderIntegrationHarness {
     cleanup,
     isNativeJsonSupported: () => nativeJsonSupported,
     makeTableName,
+    createTableWithJsonColumnType,
     loadSample,
     getJsonColumnType,
     getRowCount,
