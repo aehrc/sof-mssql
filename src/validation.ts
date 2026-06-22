@@ -3,6 +3,80 @@
  */
 
 /**
+ * Canonical storage types allowed for the resources table `json` column.
+ *
+ * `NVARCHAR(MAX)` is the default and is valid on every supported SQL Server
+ * version (2017+). `JSON` is SQL Server 2025's native JSON type.
+ */
+export type ResourceJsonDataType = "NVARCHAR(MAX)" | "JSON";
+
+/**
+ * The strict allowlist of canonical resource JSON data types. Kept as a set of
+ * the canonical (upper-case) forms so membership checks are exact, mirroring the
+ * Set-based style used elsewhere in this module.
+ */
+const RESOURCE_JSON_DATA_TYPES = new Set<string>(["NVARCHAR(MAX)", "JSON"]);
+
+/**
+ * Type predicate that narrows a string to a canonical {@link ResourceJsonDataType}.
+ *
+ * The check is strict: only the exact canonical forms (`NVARCHAR(MAX)`, `JSON`)
+ * are recognised. Case-insensitive and whitespace-tolerant acceptance is the
+ * responsibility of {@link normaliseResourceJsonDataType}, which normalises the
+ * value before delegating here.
+ *
+ * @param value - The candidate value to test.
+ * @returns `true` if the value is exactly a canonical resource JSON data type.
+ */
+export function validateResourceJsonDataType(
+  value: string,
+): value is ResourceJsonDataType {
+  return RESOURCE_JSON_DATA_TYPES.has(value);
+}
+
+/**
+ * Validate and normalise a configured resource JSON data type.
+ *
+ * Matching is case-insensitive and tolerant of surrounding whitespace, but the
+ * underlying set of accepted values is strictly limited to `NVARCHAR(MAX)` and
+ * `JSON`. The value is interpolated into `CREATE TABLE` DDL, so it is validated
+ * against the allowlist rather than trusted (Constitution Principle IV); a
+ * two-value allowlist removes any injection surface entirely.
+ *
+ * @param value - The configured value, e.g. from `LoaderOptions` or the
+ *   `--resource-json-data-type` CLI flag.
+ * @returns The canonical, upper-case form (`NVARCHAR(MAX)` or `JSON`) for use in
+ *   DDL.
+ * @throws Error if the value is empty, whitespace-only, or not one of the
+ *   allowed types. The message names the offending value and the allowed set.
+ * @example
+ * normaliseResourceJsonDataType(" json "); // "JSON"
+ * normaliseResourceJsonDataType("nvarchar(max)"); // "NVARCHAR(MAX)"
+ * normaliseResourceJsonDataType("TEXT"); // throws
+ */
+export function normaliseResourceJsonDataType(
+  value: string,
+): ResourceJsonDataType {
+  // Reject empty or whitespace-only input before anything else, so the user
+  // gets a precise message rather than a confusing "not allowed" error.
+  if (!value || value.trim().length === 0) {
+    throw new Error("Resource JSON data type cannot be empty.");
+  }
+
+  // Normalise to the canonical form: trim surrounding whitespace and upper-case.
+  const canonical = value.trim().toUpperCase();
+
+  // The predicate enforces the strict allowlist and narrows the type.
+  if (!validateResourceJsonDataType(canonical)) {
+    throw new Error(
+      `Invalid resource JSON data type: '${value}'. Must be one of: NVARCHAR(MAX), JSON.`,
+    );
+  }
+
+  return canonical;
+}
+
+/**
  * FHIR R4 resource types.
  * Complete list of all resource types defined in FHIR R4 specification.
  */

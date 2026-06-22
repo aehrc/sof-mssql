@@ -283,9 +283,33 @@ database:
 - `MSSQL_DATABASE` - Database name
 - `SQLONFHIR_TEST_PATH` - Path to test file or directory (e.g.,
   `sqlonfhir/tests` or `sqlonfhir/tests/basic.json`)
+- `MSSQL_RESOURCE_JSON_DATA_TYPE` - Storage type for the test table's `json`
+  column: `NVARCHAR(MAX)` (default) or `JSON`. The `JSON` value exercises SQL
+  Server 2025's native JSON type and requires a SQL Server 2025 (17.x) instance;
+  on older servers the table creation fails because the type is unknown.
 
 These can be set in a `.env` file in the project root (not checked into source
 control) or provided via the command line.
+
+**Native JSON column type (SQL Server 2025)**
+
+The loader can store each resource's `json` column as either `NVARCHAR(MAX)`
+(the default) or SQL Server 2025's native `JSON` type. To run the conformance
+suite against a native `JSON` column, point the environment at a SQL Server 2025
+(17.x) instance and set `MSSQL_RESOURCE_JSON_DATA_TYPE=JSON`:
+
+```bash
+set -a && source .env && set +a
+MSSQL_RESOURCE_JSON_DATA_TYPE=JSON SQLONFHIR_TEST_PATH=sqlonfhir/tests npm run test
+```
+
+The same set of tests must pass as with the variable unset (or set to
+`NVARCHAR(MAX)`). A local 2025 instance can be started with:
+
+```bash
+docker run -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=... -p 1433:1433 \
+  -d mcr.microsoft.com/mssql/server:2025-latest
+```
 
 **Running tests**
 

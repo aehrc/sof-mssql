@@ -9,6 +9,10 @@
 
 import { stringify as losslessStringify } from "lossless-json";
 import { ConnectionPool, config as MSSQLConfig, Request } from "mssql";
+import {
+  normaliseResourceJsonDataType,
+  type ResourceJsonDataType,
+} from "../../validation";
 
 // Global connection pool
 let globalPool: ConnectionPool | null = null;
@@ -42,17 +46,26 @@ const getDatabaseConfig = (): MSSQLConfig => {
 /**
  * Get table configuration from environment variables.
  * Uses a test-specific table name to avoid conflicts with production data.
+ *
+ * The `json` column's storage type is governed by MSSQL_RESOURCE_JSON_DATA_TYPE
+ * (default `NVARCHAR(MAX)`); setting it to `JSON` exercises the native JSON type
+ * and requires a SQL Server 2025 instance. This lets the full conformance suite
+ * run against both column types (FR-011).
  */
 const getTableConfig = (): {
   tableName: string;
   schemaName: string;
   resourceIdColumn: string;
   resourceJsonColumn: string;
+  resourceJsonDataType: ResourceJsonDataType;
 } => ({
   tableName: process.env.MSSQL_TEST_TABLE ?? "fhir_resources_test",
   schemaName: process.env.MSSQL_SCHEMA ?? "dbo",
   resourceIdColumn: "id",
   resourceJsonColumn: "json",
+  resourceJsonDataType: process.env.MSSQL_RESOURCE_JSON_DATA_TYPE
+    ? normaliseResourceJsonDataType(process.env.MSSQL_RESOURCE_JSON_DATA_TYPE)
+    : "NVARCHAR(MAX)",
 });
 
 /**
@@ -253,6 +266,41 @@ async function clearTestTable(): Promise<void> {
 }
 
 /**
+ * Determine the existing test table's json column type.
+ *
+ * Maps the INFORMATION_SCHEMA representation to a canonical type: `json` for the
+ * native type, otherwise `NVARCHAR(MAX)` (the test table only ever uses these
+ * two). Used to decide whether the persisted table needs recreating when the
+ * configured type changes.
+ *
+ * @param tableConfig - The resolved test table configuration.
+ * @returns The canonical existing json column type.
+ */
+async function getExistingTestTableJsonType(tableConfig: {
+  tableName: string;
+  schemaName: string;
+  resourceJsonColumn: string;
+}): Promise<ResourceJsonDataType> {
+  if (!globalPool) {
+    throw new Error("Database not connected");
+  }
+
+  const request = new Request(globalPool);
+  request.input("schemaName", tableConfig.schemaName);
+  request.input("tableName", tableConfig.tableName);
+  request.input("columnName", tableConfig.resourceJsonColumn);
+  const result = await request.query(`
+    SELECT DATA_TYPE
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @schemaName
+      AND TABLE_NAME = @tableName
+      AND COLUMN_NAME = @columnName
+  `);
+
+  return result.recordset[0]?.DATA_TYPE === "json" ? "JSON" : "NVARCHAR(MAX)";
+}
+
+/**
  * Create the FHIR resources table if it doesn't exist.
  */
 async function createTableIfNotExists(): Promise<void> {
@@ -277,15 +325,26 @@ async function createTableIfNotExists(): Promise<void> {
     const tableExists = checkResult.recordset[0]?.table_count > 0;
 
     if (tableExists) {
-      return;
+      // The shared test table persists between runs. If its json column type no
+      // longer matches the configured type (e.g. switching
+      // MSSQL_RESOURCE_JSON_DATA_TYPE between NVARCHAR(MAX) and JSON), drop it so
+      // it is recreated with the right type; otherwise leave it as is.
+      const existingType = await getExistingTestTableJsonType(tableConfig);
+      if (existingType === tableConfig.resourceJsonDataType) {
+        return;
+      }
+      await new Request(globalPool).query(`DROP TABLE ${tableName}`);
     }
 
-    // Create test table with test_id column for concurrent test isolation
+    // Create test table with test_id column for concurrent test isolation. The
+    // json column type is configurable so the same suite can prove conformance
+    // over both NVARCHAR(MAX) and the native JSON type. The type is a canonical,
+    // allowlisted value (see getTableConfig), so it carries no injection risk.
     const createTableSql = `
       CREATE TABLE ${tableName} (
         [${tableConfig.resourceIdColumn}] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         [resource_type] NVARCHAR(64) NOT NULL,
-        [${tableConfig.resourceJsonColumn}] NVARCHAR(MAX) NOT NULL,
+        [${tableConfig.resourceJsonColumn}] ${tableConfig.resourceJsonDataType} NOT NULL,
         [test_id] NVARCHAR(255) NOT NULL
       )
     `;

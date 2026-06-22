@@ -13,12 +13,16 @@ import type {
 } from "./types.js";
 import type { ConnectionPool } from "mssql";
 import {
+  normaliseResourceJsonDataType,
+  type ResourceJsonDataType,
+} from "../validation.js";
+import {
   closeConnectionPool,
   createConnectionPool,
   testConnection,
 } from "./connection.js";
 import { discoverFiles, groupFilesByResourceType } from "./discovery.js";
-import { ensureTable } from "./tables.js";
+import { ensureTable, warnIfJsonTypeMismatch } from "./tables.js";
 import { loadFile } from "./stream.js";
 import {
   completeFileProgress,
@@ -93,6 +97,7 @@ function chunkFiles(
 async function prepareTable(
   pool: ConnectionPool,
   options: LoaderOptions,
+  jsonType: ResourceJsonDataType,
 ): Promise<{ schemaName: string; tableName: string }> {
   const schemaName = options.schemaName ?? "dbo";
   const tableName = options.tableName ?? "fhir_resources";
@@ -100,10 +105,21 @@ async function prepareTable(
   if (options.createTable !== false) {
     if (options.verbose) {
       console.log(
-        `Ensuring table [${schemaName}].[${tableName}] exists${options.truncate ? " (will truncate)" : ""}...`,
+        `Ensuring table [${schemaName}].[${tableName}] exists as [json] ${jsonType}${options.truncate ? " (will truncate)" : ""}...`,
       );
     }
-    await ensureTable(pool, schemaName, tableName, options.truncate ?? false);
+    await ensureTable(
+      pool,
+      schemaName,
+      tableName,
+      options.truncate ?? false,
+      jsonType,
+    );
+  } else {
+    // Table creation is disabled, so the requested type cannot be applied.
+    // Still surface a mismatch against an existing table so misconfiguration
+    // remains visible (FR-008 edge case).
+    await warnIfJsonTypeMismatch(pool, schemaName, tableName, jsonType);
   }
 
   return { schemaName, tableName };
@@ -180,6 +196,7 @@ async function performLoad(
   files: DiscoveredFile[],
   options: LoaderOptions,
   startTime: number,
+  jsonType: ResourceJsonDataType,
 ): Promise<LoaderSummary> {
   const connected = await testConnection(pool);
   if (!connected) {
@@ -191,7 +208,7 @@ async function performLoad(
   }
 
   const progress = createProgressTracker(files);
-  const { schemaName, tableName } = await prepareTable(pool, options);
+  const { schemaName, tableName } = await prepareTable(pool, options, jsonType);
 
   if (!options.quiet) {
     console.log("Loading files...\n");
@@ -230,6 +247,14 @@ export async function loadNdjsonFiles(
 ): Promise<LoaderSummary> {
   const startTime = Date.now();
 
+  // Resolve and validate the json column storage type before any file
+  // discovery, connection or DDL. An invalid value throws synchronously here,
+  // so misconfiguration is reported before a connection is opened (FR-003).
+  const jsonType: ResourceJsonDataType =
+    options.resourceJsonDataType === undefined
+      ? "NVARCHAR(MAX)"
+      : normaliseResourceJsonDataType(options.resourceJsonDataType);
+
   const files = discoverAndLogFiles(options);
 
   if (files.length === 0) {
@@ -252,7 +277,7 @@ export async function loadNdjsonFiles(
   const pool = await createConnectionPool(options.database);
 
   try {
-    return await performLoad(pool, files, options, startTime);
+    return await performLoad(pool, files, options, startTime, jsonType);
   } finally {
     await closeConnectionPool(pool);
   }

@@ -1383,9 +1383,13 @@ export class FHIRPathToTSqlVisitor
       return base;
     }
 
-    // JSON_QUERY (array) - check if not null and not empty
+    // JSON_QUERY (array) - check if not null and not empty. The emptiness
+    // comparison is against the text '[]', so the operand is coerced to
+    // nvarchar: over a native json column JSON_QUERY returns a json-typed value
+    // that cannot be compared to a varchar literal, while over an
+    // NVARCHAR(MAX) column the cast is a no-op.
     if (base.includes("JSON_QUERY")) {
-      return `(${base} IS NOT NULL AND ${base} != '[]')`;
+      return `(${base} IS NOT NULL AND CAST(${base} AS NVARCHAR(MAX)) != '[]')`;
     }
 
     return `(${base} IS NOT NULL)`;
@@ -1417,9 +1421,11 @@ export class FHIRPathToTSqlVisitor
       return iterCtx;
     }
 
-    // JSON_QUERY (array) - check if not null and not empty
+    // JSON_QUERY (array) - check if not null and not empty. The operand is cast
+    // to nvarchar so the '[]' comparison is valid on a native json column (a
+    // no-op on NVARCHAR(MAX)).
     if (trimmedIterCtx.includes("JSON_QUERY")) {
-      return `(${iterCtx} IS NOT NULL AND ${iterCtx} != '[]')`;
+      return `(${iterCtx} IS NOT NULL AND CAST(${iterCtx} AS NVARCHAR(MAX)) != '[]')`;
     }
 
     // Otherwise check if not null
@@ -1478,9 +1484,11 @@ export class FHIRPathToTSqlVisitor
       return arg;
     }
 
-    // If the argument is a JSON_QUERY (array), check if it's not null and not empty
+    // If the argument is a JSON_QUERY (array), check if it's not null and not
+    // empty. The operand is cast to nvarchar so the '[]' comparison is valid on
+    // a native json column (a no-op on NVARCHAR(MAX)).
     if (trimmedArg.includes("JSON_QUERY")) {
-      return `(${arg} IS NOT NULL AND ${arg} != '[]')`;
+      return `(${arg} IS NOT NULL AND CAST(${arg} AS NVARCHAR(MAX)) != '[]')`;
     }
 
     // Otherwise wrap in IS NOT NULL check
@@ -1515,11 +1523,11 @@ export class FHIRPathToTSqlVisitor
         return `(NOT ${expression})`;
       }
 
-      return `(CASE 
+      return `(CASE
         WHEN ${expression} IS NULL THEN 1
-        WHEN JSON_QUERY(${expression}) = '[]' THEN 1
+        WHEN CAST(JSON_QUERY(${expression}) AS NVARCHAR(MAX)) = '[]' THEN 1
         WHEN JSON_VALUE(${expression}) IS NULL THEN 1
-        ELSE 0 
+        ELSE 0
       END = 1)`;
     }
 
@@ -1540,10 +1548,10 @@ export class FHIRPathToTSqlVisitor
       } else if (this.context.iterationContext.includes("JSON_VALUE")) {
         return `(CASE WHEN ${this.context.iterationContext} IS NULL THEN 1 ELSE 0 END = 1)`;
       } else {
-        return `(CASE 
+        return `(CASE
           WHEN JSON_QUERY(${this.context.iterationContext}) IS NULL THEN 1
-          WHEN JSON_QUERY(${this.context.iterationContext}) = '[]' THEN 1
-          ELSE 0 
+          WHEN CAST(JSON_QUERY(${this.context.iterationContext}) AS NVARCHAR(MAX)) = '[]' THEN 1
+          ELSE 0
         END = 1)`;
       }
     } else {

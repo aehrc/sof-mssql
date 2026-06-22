@@ -74,6 +74,9 @@ npx sof-mssql load ./data \
 
 # Preview what would be loaded
 npx sof-mssql load ./data --dry-run
+
+# Load into a native JSON column (SQL Server 2025+)
+npx sof-mssql load ./data --resource-json-data-type JSON
 ```
 
 **File naming:** Files must follow the pattern `{ResourceType}.ndjson` (e.g.,
@@ -94,6 +97,10 @@ filename and stored in the `resource_type` column.
 - `--table-name <name>` - Table name (default: `fhir_resources`)
 - `--schema-name <name>` - Schema name (default: `dbo`)
 - `--resource-type <type>` - Load only specific resource type
+- `--resource-json-data-type <type>` - Storage type for the `json` column:
+  `NVARCHAR(MAX)` (default) or `JSON`. The `JSON` value uses SQL Server 2025's
+  native JSON type and requires SQL Server 2025 or later; the value is
+  case-insensitive. Omit the option for the default `NVARCHAR(MAX)` behaviour.
 - `--truncate` - Truncate table before loading
 - `--no-create-table` - Don't create table if it doesn't exist
 
@@ -292,6 +299,45 @@ const sqlOnFhir = new SqlOnFhir({
 });
 ```
 
+> **Note:** `SqlOnFhir` configures the transpiler only. The storage type of the
+> `json` column - `NVARCHAR(MAX)` (default) or the native `JSON` type - is a
+> loader concern, set with the `--resource-json-data-type` CLI flag or the
+> `resourceJsonDataType` option of `loadNdjsonFiles`, not via
+> `new SqlOnFhir({ ... })`. The transpiler is storage-type agnostic: the same
+> transpiled query works over either column type, so your ViewDefinitions and
+> transpiler configuration are unchanged for a native `JSON` column.
+
+### Loading into a native JSON column
+
+The loader can store each resource in SQL Server 2025's native `JSON` type
+instead of `NVARCHAR(MAX)`:
+
+```javascript
+import { loadNdjsonFiles } from 'sof-mssql';
+
+await loadNdjsonFiles({
+  directory: './data',
+  database: {
+    host: 'localhost',
+    user: 'sa',
+    password: process.env.MSSQL_PASSWORD,
+    database: 'fhir',
+  },
+  // "NVARCHAR(MAX)" (default) or "JSON" (SQL Server 2025+); case-insensitive.
+  resourceJsonDataType: 'JSON',
+});
+```
+
+An invalid value is rejected with a clear error before any database connection
+is opened. If the target table already exists with a `json` column that is the
+other supported type (`NVARCHAR(MAX)` when `JSON` was requested, or vice versa),
+the loader prints a warning naming both types and loads into the existing table
+without altering it. If the existing `json` column is neither `NVARCHAR(MAX)` nor
+native `JSON` - for example a bounded `VARCHAR(100)` or `TEXT` that cannot hold a
+serialised FHIR resource - the loader fails fast with an error naming the
+offending type, before any rows are loaded, rather than writing into a column
+that would truncate or corrupt the data.
+
 ### Working with ViewDefinition strings
 
 ```javascript
@@ -453,6 +499,18 @@ CREATE INDEX [IX_fhir_resources_resource_type]
     ON [dbo].[fhir_resources] ([resource_type]);
 ```
 
+On SQL Server 2025 or later the `json` column may instead use the native `JSON`
+type for more efficient storage, with the rest of the table unchanged:
+
+```sql
+[json] JSON NOT NULL
+```
+
+`NVARCHAR(MAX)` is the default and works on SQL Server 2017+. The native `JSON`
+type is opt-in (`--resource-json-data-type JSON` or `resourceJsonDataType:
+"JSON"`) and requires SQL Server 2025 or later. The same transpiled query SQL
+runs over either storage type.
+
 The generated queries use:
 
 - `resource_type` column for filtering by FHIR resource type (indexed for
@@ -472,6 +530,36 @@ see [Loading NDJSON files](#loading-ndjson-files) above), which automatically
 creates the table with the correct structure. All FHIR resources are stored in a
 single table (default: `fhir_resources`), with the resource type extracted from
 the filename.
+
+### Comparing NVARCHAR(MAX) and native JSON storage
+
+The native `JSON` type stores documents in a pre-parsed binary form, which
+Microsoft documents as roughly an 18% storage reduction; actual figures depend
+on the dataset. Because timings and storage are environment-dependent, this is a
+manual procedure rather than an automated test. To compare the two storage types
+for your own data on a single SQL Server 2025 instance:
+
+1. Prepare a representative NDJSON dataset (for example, a few hundred megabytes
+   of FHIR resources).
+2. Load the same data into two separate tables, one per storage type:
+
+   ```bash
+   npx sof-mssql load ./data --table-name fhir_nvarchar
+   npx sof-mssql load ./data --table-name fhir_json --resource-json-data-type JSON
+   ```
+
+3. Compare storage with `sp_spaceused`, recording `data` and `reserved` for
+   each:
+
+   ```sql
+   EXEC sp_spaceused 'dbo.fhir_nvarchar';
+   EXEC sp_spaceused 'dbo.fhir_json';
+   ```
+
+4. Compare read performance by running an identical transpiled ViewDefinition
+   query against each table several times with `SET STATISTICS TIME ON;`,
+   discarding the first (cold-cache) run and recording the elapsed times.
+5. Record the dataset description, row counts, storage figures and timings.
 
 ## Contributing
 

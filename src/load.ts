@@ -45,7 +45,7 @@ function getDryRunDatabaseConfig(commandOptions: Record<string, unknown>): {
  * @param commandOptions - Command options.
  * @returns Loader options.
  */
-function buildLoaderOptions(
+export function buildLoaderOptions(
   directory: string,
   commandOptions: Record<string, unknown>,
 ): LoaderOptions {
@@ -70,6 +70,9 @@ function buildLoaderOptions(
     resourceType: commandOptions.resourceType as string | undefined,
     tableName: commandOptions.tableName as string | undefined,
     schemaName: commandOptions.schemaName as string | undefined,
+    resourceJsonDataType: commandOptions.resourceJsonDataType as
+      | string
+      | undefined,
     createTable: commandOptions.createTable as boolean | undefined,
     truncate: commandOptions.truncate as boolean | undefined,
     batchSize: commandOptions.batchSize as number | undefined,
@@ -110,6 +113,7 @@ async function handleLoadCommand(
  *
  * @returns Commander command for loading NDJSON files.
  */
+// eslint-disable-next-line max-lines-per-function -- Declares the full CLI option set.
 export function createLoadCommand(): Command {
   const command = new Command("load");
 
@@ -135,6 +139,10 @@ export function createLoadCommand(): Command {
     .option("--resource-type <type>", "Only load specific resource type")
     .option("--table-name <name>", "Table name (default: fhir_resources)")
     .option("--schema-name <name>", "Schema name (default: dbo)")
+    .option(
+      "--resource-json-data-type <type>",
+      "Storage type for the json column: NVARCHAR(MAX) (default) or JSON (SQL Server 2025+)",
+    )
     .option("--no-create-table", "Do not create table if it doesn't exist")
     .option("--truncate", "Truncate table before loading", false)
     .option("--batch-size <size>", "Number of rows per batch", parseInt, 1000)
