@@ -6,8 +6,8 @@ T-SQL queries.
 
 ## Features
 
-- **SQL on FHIR v2 compliance** - Implements
-  the [SQL on FHIR v2 specification](https://sql-on-fhir.org/ig/2.0.0/) for
+- **SQL on FHIR compliance** - Implements
+  the [SQL on FHIR](https://sql-on-fhir.org/) for
   transforming FHIR resources into tabular views
 - **FHIRPath support** - Full support for FHIRPath expressions in column
   definitions and filters
