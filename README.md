@@ -21,6 +21,7 @@ T-SQL queries.
 - **WHERE clauses** - Supports view-level filtering with FHIRPath expressions
 - **Bulk NDJSON loader** - Built-in loader for importing FHIR resources from
   NDJSON files
+- Tested against **SQL Server 2017, 2019, 2022 and 2025**.
 
 ## Quick start
 
